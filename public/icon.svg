@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="128" fill="#0F141C"/>
+  <rect x="76" y="76" width="360" height="360" rx="72" fill="#1B2330" stroke="#A8C7FA" stroke-width="12"/>
+  <!-- QR Finder Corners -->
+  <rect x="116" y="116" width="96" height="96" rx="20" fill="none" stroke="#A8C7FA" stroke-width="16"/>
+  <rect x="144" y="144" width="40" height="40" rx="8" fill="#A8C7FA"/>
+  <rect x="300" y="116" width="96" height="96" rx="20" fill="none" stroke="#A8C7FA" stroke-width="16"/>
+  <rect x="328" y="144" width="40" height="40" rx="8" fill="#A8C7FA"/>
+  <rect x="116" y="300" width="96" height="96" rx="20" fill="none" stroke="#A8C7FA" stroke-width="16"/>
+  <rect x="144" y="328" width="40" height="40" rx="8" fill="#A8C7FA"/>
+  <!-- Optical Pulse Center -->
+  <circle cx="348" cy="348" r="52" fill="#6DD58C"/>
+  <path d="M326 348L342 364L374 332" fill="none" stroke="#003919" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

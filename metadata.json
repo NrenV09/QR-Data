@@ -1,0 +1,6 @@
+{
+  "name": "OptiLink ARQ — Optical File Transfer",
+  "description": "Offline bidirectional face-to-face mobile file transfer using dynamic QR codes, front-facing cameras, and a Stop-and-Wait Optical ARQ protocol.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
