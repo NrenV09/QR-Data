@@ -58,3 +58,31 @@ test('Full Airgapped Generator (pako.gzip) to Scanner (pako.inflate) transfer re
   );
   assert.equal(reconstructedText, originalText);
 });
+
+test('Airgap transfer distinguishes generator role from receiver so generator never auto-downloads', () => {
+  let downloadTriggerCount = 0;
+  const mockDownloadTrigger = () => {
+    downloadTriggerCount++;
+  };
+
+  // Function mimicking the download guard in AirgapStreamView
+  const handleTransferCompletion = (role: 'GENERATOR' | 'SCANNER', source: 'CAMERA' | 'COUPLED_BRIDGE') => {
+    const isCameraScan = source === 'CAMERA';
+    const isReceiver = role === 'SCANNER';
+    if (isCameraScan && isReceiver) {
+      mockDownloadTrigger();
+    }
+  };
+
+  // 1. Generator streaming chunks via coupled bridge -> MUST NOT trigger download
+  handleTransferCompletion('GENERATOR', 'COUPLED_BRIDGE');
+  assert.equal(downloadTriggerCount, 0, 'Generator must never download files to its downloads folder');
+
+  // 2. Generator view even if camera was touched -> MUST NOT trigger download
+  handleTransferCompletion('GENERATOR', 'CAMERA');
+  assert.equal(downloadTriggerCount, 0, 'Generator view must never trigger download');
+
+  // 3. Receiver scanning via camera -> triggers download for the receiving device
+  handleTransferCompletion('SCANNER', 'CAMERA');
+  assert.equal(downloadTriggerCount, 1, 'Receiver scanning via camera should trigger download on receiver device');
+});

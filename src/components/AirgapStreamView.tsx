@@ -73,7 +73,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   );
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [opticalLoopbackCoupled, setOpticalLoopbackCoupled] =
-    useState<boolean>(true);
+    useState<boolean>(false);
 
   const generatorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -120,11 +120,18 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   }, [currentQrText, qrQuietZoneBoost]);
 
   // Feed QR frame into Scanner when coupled or scanned via camera
+  // CRITICAL: The Generator device transmitting the file must NEVER auto-download into its downloads folder.
+  // Automatic file download only triggers when frames are received via the physical camera on a receiver device.
   const handleDecodedQrFrame = useCallback(
-    (decodedText: string) => {
+    (decodedText: string, source: 'CAMERA' | 'COUPLED_BRIDGE' = 'CAMERA') => {
       setScannerState((prev) => {
         const next = stepAirgapScanner(prev, decodedText);
+        const isCameraScan = source === 'CAMERA';
+        const isReceiver = viewTab !== 'GENERATOR';
+
         if (
+          isCameraScan &&
+          isReceiver &&
           next.isComplete &&
           next.reconstructedBytes &&
           next.fileMetadata &&
@@ -136,7 +143,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         return next;
       });
     },
-    [onTriggerDownload]
+    [onTriggerDownload, viewTab]
   );
 
   // Animated Generator Loop (matches mohanram's `start_transfer` flow:
@@ -161,7 +168,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         setCurrentQrText(preparedTransfer.metadataJson);
         setSenderUserMessage('Starting data transfer in few seconds ...');
         if (opticalLoopbackCoupled) {
-          handleDecodedQrFrame(preparedTransfer.metadataJson);
+          handleDecodedQrFrame(preparedTransfer.metadataJson, 'COUPLED_BRIDGE');
         }
         await wait(650);
 
@@ -175,18 +182,16 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
             `Transferring Chunk ${i + 1}/${preparedTransfer.totalChunks} ...`
           );
           if (opticalLoopbackCoupled) {
-            handleDecodedQrFrame(encodedData);
+            handleDecodedQrFrame(encodedData, 'COUPLED_BRIDGE');
           }
           await wait(frameDelayMs);
         }
-      } while (loopStream && !cancelled && !downloadedRef.current);
+      } while (loopStream && !cancelled);
 
       if (!cancelled) {
         setIsTransferring(false);
         setSenderUserMessage(
-          downloadedRef.current
-            ? `Data Transfer Complete (${preparedTransfer.name})`
-            : `Finished streaming ${preparedTransfer.totalChunks} chunks.`
+          `Finished streaming ${preparedTransfer.totalChunks} chunks to Receiver.`
         );
       }
     };
@@ -335,7 +340,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         try {
           const codes = await nativeDetector.detect(canvas);
           if (codes.length > 0 && codes[0].rawValue) {
-            handleDecodedQrFrame(codes[0].rawValue);
+            handleDecodedQrFrame(codes[0].rawValue, 'CAMERA');
             return;
           }
         } catch {
@@ -348,7 +353,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         inversionAttempts: 'attemptBoth',
       });
       if (code && code.data) {
-        handleDecodedQrFrame(code.data);
+        handleDecodedQrFrame(code.data, 'CAMERA');
       }
     }, 30);
 
@@ -847,7 +852,11 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                       className="min-h-[38px] px-3.5 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Download Again</span>
+                      <span>
+                        {downloadedRef.current
+                          ? 'Download Again'
+                          : 'Save / Download File'}
+                      </span>
                     </button>
                   </div>
                 )}

@@ -276,9 +276,11 @@ export default function App() {
     []
   );
 
-  // Automatically trigger file download when Bidirectional ARQ Receiver completes transfer
+  // Automatically trigger file download ONLY when this device is explicitly the RECEIVER
+  // The SENDER (Generator) transmitting the file must NEVER auto-download its own file
   useEffect(() => {
     if (
+      role === 'RECEIVER' &&
       receiverState.phase === 'COMPLETE' &&
       receiverState.assembledBytes &&
       receiverState.metadata &&
@@ -292,6 +294,7 @@ export default function App() {
       );
     }
   }, [
+    role,
     receiverState.phase,
     receiverState.assembledBytes,
     receiverState.metadata,
