@@ -47,7 +47,7 @@ jobs:
           for asset in icon.svg apple-touch-icon.png pwa-192x192.png pwa-512x512.png pwa-maskable-512x512.png; do
             [ -f "$asset" ] && [ ! -f "public/$asset" ] && cp "$asset" "public/$asset" || true
           done
-      - run: npm install
+      - run: npm install --legacy-peer-deps
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
