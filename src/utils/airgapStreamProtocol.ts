@@ -188,20 +188,64 @@ export function stepAirgapScanner(
         typeof parsed.chunks === 'number' &&
         parsed.chunks > 0
       ) {
-        // If already receiving the exact same file, keep existing chunks so fountain loop doesn't wipe progress!
-        const isSameFile =
+        // Preserve any chunks already scanned if the camera joined mid-stream before the metadata frame looped around
+        const isDifferentCompletedFile =
+          state.isComplete &&
           state.fileMetadata &&
-          state.fileMetadata.name === parsed.name &&
-          state.fileMetadata.chunks === parsed.chunks &&
-          !state.isComplete;
+          (state.fileMetadata.name !== parsed.name ||
+            state.fileMetadata.chunks !== parsed.chunks);
 
-        if (isSameFile) {
-          return {
-            ...state,
-            isReceiving: true,
-            userMessage: `Transferring file: ${parsed.name}`,
-            lastScannedRaw: decodedData,
-          };
+        const isDifferentActiveFile =
+          !state.isComplete &&
+          state.fileMetadata &&
+          (state.fileMetadata.name !== parsed.name ||
+            state.fileMetadata.chunks !== parsed.chunks);
+
+        const preservedChunks: Record<number, number[]> = {};
+        if (!isDifferentCompletedFile && !isDifferentActiveFile && !state.isComplete) {
+          for (const [k, v] of Object.entries(state.decodedChunks)) {
+            const idx = Number(k);
+            if (!Number.isNaN(idx) && idx >= 0 && idx < parsed.chunks) {
+              preservedChunks[idx] = v;
+            }
+          }
+        }
+        const preservedCount = Object.keys(preservedChunks).length;
+
+        // If all chunks 0 .. parsed.chunks - 1 were already captured before metadata arrived, inflate immediately
+        if (preservedCount >= parsed.chunks) {
+          let allPresent = true;
+          const outputArray: number[] = [];
+          for (let i = 0; i < parsed.chunks; i++) {
+            const chunkArr = preservedChunks[i];
+            if (!chunkArr) {
+              allPresent = false;
+              break;
+            }
+            for (let b = 0; b < chunkArr.length; b++) {
+              outputArray.push(chunkArr[b]);
+            }
+          }
+          if (allPresent) {
+            try {
+              const inflatedArray = pako.inflate(Uint8Array.from(outputArray));
+              return {
+                isReceiving: false,
+                userMessage: 'Data Transfer Complete',
+                fileMetadata: {
+                  name: parsed.name,
+                  chunks: parsed.chunks,
+                },
+                decodedChunks: preservedChunks,
+                receivedCount: preservedCount,
+                isComplete: true,
+                reconstructedBytes: inflatedArray,
+                lastScannedRaw: decodedData,
+              };
+            } catch {
+              // Fall through to normal metadata initialization if inflate fails
+            }
+          }
         }
 
         return {
@@ -211,8 +255,8 @@ export function stepAirgapScanner(
             name: parsed.name,
             chunks: parsed.chunks,
           },
-          decodedChunks: {},
-          receivedCount: 0,
+          decodedChunks: preservedChunks,
+          receivedCount: preservedCount,
           isComplete: false,
           reconstructedBytes: null,
           lastScannedRaw: decodedData,

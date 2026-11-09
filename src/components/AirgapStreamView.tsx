@@ -4,8 +4,8 @@ import jsQR from 'jsqr';
 import {
   Camera,
   CameraOff,
-  FileArchive,
-  FileText,
+  ChevronLeft,
+  ChevronRight,
   FileUp,
   FlipHorizontal,
   Play,
@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Square,
   SwitchCamera,
-  Zap,
 } from 'lucide-react';
 import {
   AirgapScannerState,
@@ -45,26 +44,21 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   chunkSize,
   onChangeChunkSize,
   qrQuietZoneBoost,
-  onOpenMaterialSettings,
   onTriggerDownload,
   activeViewTab,
-  onTabChange,
 }) => {
-  // Default to GENERATOR (Transmitter) so generator does not show scanner by default
-  const [internalViewTab, setInternalViewTab] = useState<AirgapViewTab>('GENERATOR');
-  const viewTab = activeViewTab ?? internalViewTab;
-  const setViewTab = onTabChange ?? setInternalViewTab;
+  const viewTab: AirgapViewTab = activeViewTab ?? 'GENERATOR';
 
   // Generator (Data Sender Mode) State
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
   const [senderUserMessage, setSenderUserMessage] = useState<string>(
-    'Choose or drop a file to transmit'
+    'Ready to broadcast optical QR stream'
   );
   const [currentChunkIndex, setCurrentChunkIndex] = useState<number>(-1); // -1 = metadata frame
   const [currentQrText, setCurrentQrText] = useState<string>(
     preparedTransfer.metadataJson
   );
-  const [frameDelayMs, setFrameDelayMs] = useState<number>(60);
+  const [frameDelayMs, setFrameDelayMs] = useState<number>(80);
   const [loopStream, setLoopStream] = useState<boolean>(true);
   const [flipQr, setFlipQr] = useState<boolean>(false);
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
@@ -86,13 +80,14 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   const downloadedRef = useRef<boolean>(false);
 
   // Sync generator QR code whenever preparedTransfer changes
-  // CRITICAL: NEVER modify or touch scannerState here! Generator file changes must not leak to Scanner!
+  // CRITICAL: Putting a file in the generator MUST NEVER populate scannerState or open any decoded chunks popup!
   useEffect(() => {
     setIsTransferring(false);
+    setSimulationBridgeActive(false);
     setCurrentChunkIndex(-1);
     setCurrentQrText(preparedTransfer.metadataJson);
     setSenderUserMessage(
-      `Ready: ${preparedTransfer.name} (${preparedTransfer.totalChunks} chunks)`
+      `Loaded ${preparedTransfer.name} (${preparedTransfer.totalChunks} chunks)`
     );
   }, [preparedTransfer]);
 
@@ -100,13 +95,13 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   useEffect(() => {
     const canvas = generatorCanvasRef.current;
     if (!canvas) return;
-    const textToEncode = currentQrText || 'Choose file to get started';
+    const textToEncode = currentQrText || preparedTransfer.metadataJson;
 
     QRCode.toCanvas(
       canvas,
       textToEncode,
       {
-        width: 280,
+        width: 248,
         margin: qrQuietZoneBoost ? 4 : 2,
         color: {
           dark: '#000000',
@@ -120,10 +115,9 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         }
       }
     );
-  }, [currentQrText, qrQuietZoneBoost]);
+  }, [currentQrText, preparedTransfer.metadataJson, qrQuietZoneBoost, viewTab]);
 
-  // Feed QR frame into Scanner when scanned via camera or explicit simulation bridge
-  // CRITICAL: Generator transmitting files must NEVER auto-download into its downloads folder!
+  // Feed QR frame into Scanner ONLY when scanned via camera or explicit Dual Testbed simulation
   const handleDecodedQrFrame = useCallback(
     (decodedText: string, source: 'CAMERA' | 'SIMULATION_BRIDGE' = 'CAMERA') => {
       setScannerState((prev) => {
@@ -131,7 +125,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         const isCameraScan = source === 'CAMERA';
         const isReceiverRole = viewTab !== 'GENERATOR';
 
-        // Auto-download only on physical receiver camera scans
+        // Auto-download ONLY on physical receiver camera scans (never on Generator!)
         if (
           isCameraScan &&
           isReceiverRole &&
@@ -149,6 +143,28 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     [onTriggerDownload, viewTab]
   );
 
+  // Jump Generator directly to a specific frame (-1 = metadata, 0..N-1 = chunk)
+  const handleSelectGeneratorFrame = (frameIndex: number) => {
+    setIsTransferring(false);
+    if (frameIndex < 0) {
+      setCurrentChunkIndex(-1);
+      setCurrentQrText(preparedTransfer.metadataJson);
+      setSenderUserMessage('Pinned Frame 0 (File Metadata JSON)');
+    } else {
+      const clamped = Math.min(
+        preparedTransfer.totalChunks - 1,
+        Math.max(0, frameIndex)
+      );
+      setCurrentChunkIndex(clamped);
+      setCurrentQrText(preparedTransfer.encodedChunks[clamped]);
+      setSenderUserMessage(
+        `Pinned Chunk #${clamped.toString().padStart(2, '0')} (${clamped + 1} of ${
+          preparedTransfer.totalChunks
+        })`
+      );
+    }
+  };
+
   // Animated Generator Transmission Loop
   useEffect(() => {
     if (!isTransferring) return;
@@ -163,24 +179,24 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         });
 
       do {
-        // Phase 1: Emit file_metadata JSON `{ name: file.name, chunks: total_chunks }`
         if (cancelled) break;
         setCurrentChunkIndex(-1);
         setCurrentQrText(preparedTransfer.metadataJson);
-        setSenderUserMessage('Starting transmission: broadcasting metadata...');
+        setSenderUserMessage('Broadcasting Frame 0 (Metadata)...');
         if (simulationBridgeActive && viewTab === 'DUAL') {
           handleDecodedQrFrame(preparedTransfer.metadataJson, 'SIMULATION_BRIDGE');
         }
-        await wait(600);
+        await wait(450);
 
-        // Phase 2: Stream each Gzip-compressed chunk `0 .. totalChunks - 1`
         for (let i = 0; i < preparedTransfer.totalChunks; i++) {
           if (cancelled) break;
           const encodedData = preparedTransfer.encodedChunks[i];
           setCurrentChunkIndex(i);
           setCurrentQrText(encodedData);
           setSenderUserMessage(
-            `Streaming Chunk #${i + 1} of ${preparedTransfer.totalChunks}...`
+            `Streaming Chunk #${i.toString().padStart(2, '0')} (${i + 1}/${
+              preparedTransfer.totalChunks
+            })`
           );
           if (simulationBridgeActive && viewTab === 'DUAL') {
             handleDecodedQrFrame(encodedData, 'SIMULATION_BRIDGE');
@@ -192,7 +208,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       if (!cancelled) {
         setIsTransferring(false);
         setSenderUserMessage(
-          `Transmission cycle complete (${preparedTransfer.totalChunks} chunks).`
+          `Stream pass finished (${preparedTransfer.totalChunks} chunks)`
         );
       }
     };
@@ -213,17 +229,6 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     handleDecodedQrFrame,
   ]);
 
-  const handleStartTransfer = () => {
-    setIsTransferring(true);
-  };
-
-  const handleStopTransfer = () => {
-    setIsTransferring(false);
-    setCurrentChunkIndex(-1);
-    setCurrentQrText(preparedTransfer.metadataJson);
-    setSenderUserMessage('Transmission stopped');
-  };
-
   // Camera Scanner Controls
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -242,11 +247,11 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     setScannerState((prev) => ({
       ...prev,
       isReceiving: true,
-      userMessage: 'Scanning for optical QR stream...',
+      userMessage: 'Scanning optical QR stream...',
     }));
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraError('Camera API unavailable in this environment.');
+      setCameraError('Camera API unavailable in this browser context.');
       return;
     }
 
@@ -278,7 +283,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     setScannerState((prev) => ({
       ...prev,
       isReceiving: false,
-      userMessage: 'Scanner paused',
+      userMessage: 'Receiver paused',
     }));
   };
 
@@ -346,12 +351,34 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       if (code && code.data) {
         handleDecodedQrFrame(code.data, 'CAMERA');
       }
-    }, 30);
+    }, 35);
 
     return () => window.clearInterval(interval);
   }, [cameraActive, scannerState.isReceiving, handleDecodedQrFrame]);
 
-  // Drag & Drop handlers
+  // Dual-Testbed diagnostic helpers (ONLY in Dual Testbed mode)
+  const handleSimulatePartialScan = () => {
+    let next = createInitialAirgapScannerState();
+    next = stepAirgapScanner(next, preparedTransfer.metadataJson);
+    // Decode even-indexed chunks and leave odd-indexed chunks undecoded so user can inspect both lists
+    for (let i = 0; i < preparedTransfer.totalChunks; i++) {
+      if (i % 2 === 0) {
+        next = stepAirgapScanner(next, preparedTransfer.encodedChunks[i]);
+      }
+    }
+    setScannerState(next);
+  };
+
+  const handleSimulateFullScan = () => {
+    let next = createInitialAirgapScannerState();
+    next = stepAirgapScanner(next, preparedTransfer.metadataJson);
+    for (let i = 0; i < preparedTransfer.totalChunks; i++) {
+      next = stepAirgapScanner(next, preparedTransfer.encodedChunks[i]);
+    }
+    setScannerState(next);
+  };
+
+  // Drag & Drop handler
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -362,396 +389,571 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     }
   };
 
+  // Reusable Generator QR Stage
+  const renderGeneratorQrStage = () => (
+    <div className="m3-surface-card p-3 flex flex-col gap-2.5 border border-[var(--m3-outline-variant)]">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider">
+            Optical QR Emitter
+          </span>
+          <span
+            className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold uppercase ${
+              isTransferring
+                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
+                : 'bg-[var(--m3-surface-container-high)] text-slate-300'
+            }`}
+          >
+            {isTransferring ? '● STREAMING' : 'STANDBY'}
+          </span>
+        </div>
+        <span className="text-[11px] font-mono font-bold text-[var(--m3-primary)]">
+          {currentChunkIndex === -1
+            ? 'FRAME 0 (META)'
+            : `CHUNK #${currentChunkIndex.toString().padStart(2, '0')} (${
+                currentChunkIndex + 1
+              }/${preparedTransfer.totalChunks})`}
+        </span>
+      </div>
+
+      {/* High-Contrast QR Canvas Pad */}
+      <div className="flex flex-col items-center justify-center p-2.5 rounded bg-white text-slate-900 border border-slate-300">
+        <canvas
+          ref={generatorCanvasRef}
+          id="qrcode"
+          style={{ transform: flipQr ? 'scaleX(-1)' : 'none' }}
+          className="max-w-full h-auto block"
+        />
+        <div className="mt-1.5 w-full flex items-center justify-between px-2 pt-1.5 border-t border-slate-200 text-[10px] font-mono text-slate-600">
+          <span className="truncate max-w-[200px]">{preparedTransfer.name}</span>
+          <span>
+            {currentChunkIndex === -1
+              ? `${preparedTransfer.metadataJson.length} B JSON`
+              : `${currentQrText.length} B Frame`}
+          </span>
+        </div>
+      </div>
+
+      {/* Frame Scrubber Bar */}
+      <div className="flex items-center gap-2 px-1">
+        <button
+          type="button"
+          title="Previous Frame"
+          onClick={() =>
+            handleSelectGeneratorFrame(Math.max(-1, currentChunkIndex - 1))
+          }
+          className="p-1 rounded m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <input
+          type="range"
+          aria-label="Scrub Optical QR Frame"
+          min={-1}
+          max={Math.max(0, preparedTransfer.totalChunks - 1)}
+          value={currentChunkIndex}
+          onChange={(e) => handleSelectGeneratorFrame(Number(e.target.value))}
+          className="flex-1 accent-[var(--m3-primary)] cursor-pointer h-1.5"
+        />
+        <button
+          type="button"
+          title="Next Frame"
+          onClick={() =>
+            handleSelectGeneratorFrame(
+              Math.min(preparedTransfer.totalChunks - 1, currentChunkIndex + 1)
+            )
+          }
+          className="p-1 rounded m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+        >
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Primary Transport & Speed Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5">
+          {!isTransferring ? (
+            <button
+              type="button"
+              onClick={() => setIsTransferring(true)}
+              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer rounded"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Start Transfer</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setIsTransferring(false);
+                setSenderUserMessage('Transmission paused');
+              }}
+              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer rounded"
+            >
+              <Square className="w-3 h-3 fill-current" />
+              <span>Stop Transfer</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setLoopStream((l) => !l)}
+            className={`min-h-[32px] px-2 py-1 text-[11px] font-mono rounded border cursor-pointer flex items-center gap-1 ${
+              loopStream
+                ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)] font-bold'
+                : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
+            }`}
+          >
+            <Repeat className="w-3 h-3" />
+            <span>Loop: {loopStream ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFlipQr((f) => !f)}
+            className={`min-h-[32px] px-2 py-1 text-[11px] font-mono rounded border cursor-pointer flex items-center gap-1 ${
+              flipQr
+                ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)]'
+                : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
+            }`}
+          >
+            <FlipHorizontal className="w-3 h-3" />
+            <span>Flip</span>
+          </button>
+        </div>
+
+        <div className="inline-flex rounded p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono">
+          {[50, 80, 120, 180].map((delay) => (
+            <button
+              key={delay}
+              type="button"
+              onClick={() => setFrameDelayMs(delay)}
+              className={`px-1.5 py-0.5 rounded cursor-pointer ${
+                frameDelayMs === delay
+                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] font-bold'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {delay}ms
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Status Line */}
+      <div className="px-2.5 py-1.5 rounded bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]">
+        <span className="truncate text-slate-300">{senderUserMessage}</span>
+        <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+          {Math.round(1000 / frameDelayMs)} fps
+        </span>
+      </div>
+    </div>
+  );
+
+  // Reusable Generator File Configuration & Outgoing Frame Queue
+  const renderGeneratorPayloadConfig = () => (
+    <div className="m3-surface-card p-3 flex flex-col gap-3 border border-[var(--m3-outline-variant)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2">
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-wider">
+            Source Payload &amp; Outgoing Frame Manifest
+          </h2>
+          <p className="text-[11px] font-mono m3-text-muted">
+            Select a file to compress with Pako Gzip (Level 9) for optical transmission
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1 text-[10px] font-mono">
+          <span className="text-slate-400 mr-1">Chunk Size:</span>
+          {[250, 350, 500].map((sz) => (
+            <button
+              key={sz}
+              type="button"
+              onClick={() => onChangeChunkSize(sz)}
+              className={`px-2 py-0.5 rounded font-mono cursor-pointer border ${
+                chunkSize === sz
+                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
+                  : 'm3-surface-low border-[var(--m3-outline-variant)] text-slate-400'
+              }`}
+            >
+              {sz}B
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Compact Drag-and-Drop Zone */}
+      <div
+        data-testid="file-drop-zone"
+        role="button"
+        tabIndex={0}
+        aria-label="Drop file here or click to select file for QR transfer"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(true);
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDraggingOver(false);
+        }}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        className={`border border-dashed p-2.5 rounded flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+          isDraggingOver
+            ? 'border-[var(--m3-primary)] bg-[var(--m3-surface-container-high)]'
+            : 'border-[var(--m3-outline)] m3-surface-low hover:border-[var(--m3-primary)]'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded bg-[var(--m3-primary)] text-[var(--m3-on-primary)] flex items-center justify-center shrink-0">
+            <FileUp className="w-3.5 h-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold truncate">
+              {preparedTransfer.name}
+            </div>
+            <div className="text-[10px] font-mono m3-text-muted truncate">
+              Drop any file here or click to browse local filesystem (100% offline)
+            </div>
+          </div>
+        </div>
+
+        <span className="min-h-[28px] px-2.5 py-1 text-[11px] font-semibold m3-btn-filled rounded shrink-0 flex items-center">
+          Browse File
+        </span>
+        <input
+          ref={fileInputRef}
+          id="file_input"
+          type="file"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) {
+              onFileUpload(f);
+              e.target.value = '';
+            }
+          }}
+          className="hidden"
+        />
+      </div>
+
+      {/* 4-Cell Dense Compression Telemetry Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+        <div className="m3-surface-low px-2.5 py-1.5 rounded border border-[var(--m3-outline-variant)]">
+          <div className="text-[10px] text-slate-400">RAW BYTES</div>
+          <div className="font-bold text-sm">{preparedTransfer.originalSize} B</div>
+        </div>
+        <div className="m3-surface-low px-2.5 py-1.5 rounded border border-[var(--m3-outline-variant)]">
+          <div className="text-[10px] text-slate-400">GZIP (LVL 9)</div>
+          <div className="font-bold text-sm text-[var(--m3-primary)]">
+            {preparedTransfer.compressedSize} B
+          </div>
+        </div>
+        <div className="m3-surface-low px-2.5 py-1.5 rounded border border-[var(--m3-outline-variant)]">
+          <div className="text-[10px] text-slate-400">COMPRESSION</div>
+          <div className="font-bold text-sm text-emerald-400">
+            {preparedTransfer.compressionRatioPct > 0
+              ? `-${preparedTransfer.compressionRatioPct}%`
+              : '0%'}
+          </div>
+        </div>
+        <div className="m3-surface-low px-2.5 py-1.5 rounded border border-[var(--m3-outline-variant)]">
+          <div className="text-[10px] text-slate-400">QR FRAMES</div>
+          <div className="font-bold text-sm">
+            {preparedTransfer.totalChunks} + 1 Meta
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Deterministic Presets */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-slate-400">Load Test Payload:</span>
+          <button
+            type="button"
+            onClick={() => onLoadPresetFile('TELEMETRY')}
+            className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+          >
+            calibration-telemetry.json
+          </button>
+          <button
+            type="button"
+            onClick={() => onLoadPresetFile('SPEC')}
+            className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+          >
+            optical-arq-protocol.txt
+          </button>
+          <button
+            type="button"
+            onClick={() => onLoadPresetFile('SVG')}
+            className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+          >
+            reticle-diagram.svg
+          </button>
+        </div>
+      </div>
+
+      {/* Outgoing Transmitter Frame Selector (Click any row to project that frame) */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-[10px] font-mono m3-text-muted">
+          <span>
+            OUTGOING TRANSMITTER FRAMES (CLICK ANY ROW TO PIN &amp; BROADCAST SINGLE CHUNK)
+          </span>
+          <span>{preparedTransfer.totalChunks + 1} frames ready</span>
+        </div>
+
+        <div className="max-h-48 overflow-y-auto rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)]">
+          <table className="w-full text-left border-collapse text-[11px] font-mono">
+            <thead>
+              <tr className="border-b border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-high)] text-slate-400 text-[10px]">
+                <th className="py-1 px-2.5 w-24">Frame</th>
+                <th className="py-1 px-2.5 w-24">Type</th>
+                <th className="py-1 px-2.5 w-24">QR Chars</th>
+                <th className="py-1 px-2.5">Encoded Preview</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--m3-outline-variant)]">
+              <tr
+                onClick={() => handleSelectGeneratorFrame(-1)}
+                className={`cursor-pointer transition-colors ${
+                  currentChunkIndex === -1
+                    ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
+                    : 'hover:bg-[var(--m3-surface)]'
+                }`}
+              >
+                <td className="py-1 px-2.5">Frame 0</td>
+                <td className="py-1 px-2.5">METADATA</td>
+                <td className="py-1 px-2.5">{preparedTransfer.metadataJson.length} B</td>
+                <td className="py-1 px-2.5 truncate max-w-[220px] text-[10px] opacity-85">
+                  {preparedTransfer.metadataJson}
+                </td>
+              </tr>
+              {preparedTransfer.encodedChunks.map((encoded, idx) => (
+                <tr
+                  key={idx}
+                  onClick={() => handleSelectGeneratorFrame(idx)}
+                  className={`cursor-pointer transition-colors ${
+                    currentChunkIndex === idx
+                      ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
+                      : 'hover:bg-[var(--m3-surface)]'
+                  }`}
+                >
+                  <td className="py-1 px-2.5">
+                    Chunk #{idx.toString().padStart(2, '0')}
+                  </td>
+                  <td className="py-1 px-2.5">GZIP DATA</td>
+                  <td className="py-1 px-2.5">{encoded.length} B</td>
+                  <td className="py-1 px-2.5 truncate max-w-[220px] text-[10px] opacity-80">
+                    {encoded.slice(0, 42)}...
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Reusable Scanner Camera Viewfinder Stage
+  const renderScannerCameraStage = () => (
+    <div className="m3-surface-card p-3 flex flex-col gap-2.5 border border-[var(--m3-outline-variant)]">
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2">
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-wider">
+            Optical Camera Receiver
+          </h2>
+          <p className="text-[10px] font-mono m3-text-muted">
+            Point camera at Sender QR stream to capture chunks
+          </p>
+        </div>
+        <span
+          data-testid="scanner-progress-text"
+          className="text-xs font-mono font-bold text-[var(--m3-primary)] whitespace-nowrap shrink-0"
+        >
+          {scannerState.receivedCount} / {scannerState.fileMetadata?.chunks || 0} Chunks
+        </span>
+      </div>
+
+      {/* Receiver Action Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5">
+          {!cameraActive ? (
+            <button
+              type="button"
+              onClick={() => startReceiverCamera(facingMode)}
+              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer rounded"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Start Receiver</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleStopReceiver}
+              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer rounded"
+            >
+              <CameraOff className="w-3.5 h-3.5" />
+              <span>Stop Receiver</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleToggleFacingMode}
+            className="min-h-[32px] px-2.5 py-1 text-[11px] font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded cursor-pointer flex items-center gap-1"
+          >
+            <SwitchCamera className="w-3.5 h-3.5" />
+            <span>{facingMode === 'environment' ? 'Rear Cam' : 'Front Cam'}</span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            downloadedRef.current = false;
+            setScannerState(createInitialAirgapScannerState());
+          }}
+          className="min-h-[32px] px-2.5 py-1 text-[11px] font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded cursor-pointer flex items-center gap-1 text-slate-300 hover:text-white"
+        >
+          <RotateCcw className="w-3 h-3" />
+          <span>Clear Receiver</span>
+        </button>
+      </div>
+
+      {/* Camera Viewfinder Box */}
+      <div className="w-full h-56 bg-[#03060f] border border-slate-800 rounded overflow-hidden relative flex flex-col">
+        <div className="shrink-0 flex items-center justify-between px-2.5 py-1 text-[10px] font-mono text-slate-400 bg-slate-950/90 border-b border-slate-800">
+          <span>SENSOR ({facingMode.toUpperCase()})</span>
+          <span className={cameraActive ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
+            {cameraActive ? '● SCANNING (28 FPS)' : 'STANDBY'}
+          </span>
+        </div>
+
+        <div className="relative flex-1 flex items-center justify-center p-2 overflow-hidden">
+          <video
+            ref={videoRef}
+            id="videoElement"
+            muted
+            autoPlay
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          <canvas ref={scanCanvasRef} className="hidden" />
+
+          {/* Target Reticle */}
+          <div className="absolute w-36 h-36 border-2 border-dashed border-cyan-400/80 rounded pointer-events-none flex items-center justify-center">
+            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping opacity-60" />
+          </div>
+
+          {!cameraActive && (
+            <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center p-4 text-center">
+              <p className="text-xs font-semibold text-slate-200">
+                Optical Viewfinder Ready
+              </p>
+              <p className="text-[11px] font-mono text-slate-400 mt-1 max-w-xs">
+                Click &ldquo;Start Receiver&rdquo; to open your camera and scan QR chunks from the transmitting device.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {cameraError && (
+          <div className="shrink-0 bg-amber-950/90 border-t border-amber-500/40 px-2.5 py-1 text-[10px] font-mono text-amber-200">
+            {cameraError}
+          </div>
+        )}
+      </div>
+
+      {/* Receiver Status Bar */}
+      <div
+        role="status"
+        className="px-2.5 py-1.5 rounded bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]"
+      >
+        <span className="truncate">{scannerState.userMessage}</span>
+        <span className="font-bold whitespace-nowrap shrink-0 ml-2">
+          {scannerState.isComplete
+            ? '✔ COMPLETE'
+            : scannerState.isReceiving
+            ? '● RECEIVING'
+            : 'IDLE'}
+        </span>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Simulation Bridge notice only displayed in Dual Testbed */}
+    <div className="flex flex-col gap-3">
+      {/* Dual Testbed Loopback Bar (ONLY visible in Dual Testbed mode) */}
       {viewTab === 'DUAL' && (
         <div className="m3-surface-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 border border-[var(--m3-outline-variant)] text-xs font-mono">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-[var(--m3-on-surface)]">Dual Testbed:</span>
-            <span className="text-slate-400">Isolated Generator &amp; Scanner modules on one screen</span>
+            <span className="font-bold text-[var(--m3-primary)]">
+              SPLIT TESTBENCH:
+            </span>
+            <span className="text-slate-300 text-[11px]">
+              Generator &amp; Scanner are strictly isolated by default. Use loopback actions to test chunk decoding on one screen:
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setSimulationBridgeActive((s) => !s)}
-            className={`min-h-[30px] px-3 py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
-              simulationBridgeActive
-                ? 'bg-amber-950/70 text-amber-300 border-amber-600/80 font-bold'
-                : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)] hover:text-white'
-            }`}
-          >
-            Simulation Bridge: {simulationBridgeActive ? 'Coupled (Active)' : 'Uncoupled (Camera Only)'}
-          </button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleSimulatePartialScan}
+              className="min-h-[28px] px-2.5 py-1 rounded text-[11px] font-mono bg-amber-950/60 text-amber-300 border border-amber-700/60 hover:bg-amber-900/60 cursor-pointer"
+            >
+              Simulate Partial Scan (Decoded + Undecoded)
+            </button>
+            <button
+              type="button"
+              onClick={handleSimulateFullScan}
+              className="min-h-[28px] px-2.5 py-1 rounded text-[11px] font-mono bg-emerald-950/60 text-emerald-300 border border-emerald-700/60 hover:bg-emerald-900/60 cursor-pointer"
+            >
+              Simulate Full Scan
+            </button>
+            <button
+              type="button"
+              onClick={() => setSimulationBridgeActive((s) => !s)}
+              className={`min-h-[28px] px-2.5 py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+                simulationBridgeActive
+                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
+                  : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)] hover:text-white'
+              }`}
+            >
+              Live Stream Bridge: {simulationBridgeActive ? 'ON' : 'OFF'}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Main Responsive Grid: Generator / Scanner / Dual */}
-      <div
-        className={`grid grid-cols-1 ${
-          viewTab === 'DUAL' ? 'lg:grid-cols-12' : ''
-        } gap-4 items-start`}
-      >
-        {/* ================= DATA SENDER MODE (/generator) ================= */}
-        {(viewTab === 'GENERATOR' || viewTab === 'DUAL') && (
-          <section
-            aria-label="Data Sender Mode (QR Generator)"
-            className={`${
-              viewTab === 'DUAL' ? 'lg:col-span-6' : 'max-w-3xl mx-auto w-full'
-            } m3-surface-card p-4 flex flex-col gap-3.5 border border-[var(--m3-outline-variant)]`}
-          >
-            {/* Header info */}
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
-              <div>
-                <h2 className="text-sm font-bold tracking-tight">Data Sender (Generator)</h2>
-                <p className="text-[11px] font-mono m3-text-muted">
-                  Gzip Level-9 compression · Continuous animated QR chunk stream
-                </p>
-              </div>
-              <span
-                className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
-                  isTransferring
-                    ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 animate-pulse'
-                    : 'bg-[var(--m3-surface-container-high)] text-slate-300'
-                }`}
-              >
-                {isTransferring ? 'Broadcasting' : 'Standby'}
-              </span>
-            </div>
+      {/* MODE 1: GENERATOR (SEND FILE) — Dense 2-Column Horizontal Workbench */}
+      {viewTab === 'GENERATOR' && (
+        <div
+          aria-label="Data Sender Mode (QR Generator)"
+          className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start"
+        >
+          <div className="lg:col-span-5">{renderGeneratorQrStage()}</div>
+          <div className="lg:col-span-7">{renderGeneratorPayloadConfig()}</div>
+        </div>
+      )}
 
-            {/* Compact File Drop Zone */}
-            <div
-              data-testid="file-drop-zone"
-              role="button"
-              tabIndex={0}
-              aria-label="Drop file here or click to select file for QR transfer"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDraggingOver(true);
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setIsDraggingOver(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setIsDraggingOver(false);
-              }}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-              className={`border-2 border-dashed p-3 rounded-lg flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                isDraggingOver
-                  ? 'border-[var(--m3-primary)] bg-[var(--m3-surface-container-high)]'
-                  : 'border-[var(--m3-outline-variant)] m3-surface-low hover:border-slate-500'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-md bg-[var(--m3-primary)] text-[var(--m3-on-primary)] flex items-center justify-center shrink-0">
-                  <FileUp className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold truncate">
-                    {preparedTransfer.name}
-                  </div>
-                  <div className="text-[10px] font-mono m3-text-muted truncate">
-                    Raw: {preparedTransfer.originalSize} B → Gzip:{' '}
-                    {preparedTransfer.compressedSize} B (
-                    {preparedTransfer.compressionRatioPct > 0
-                      ? `-${preparedTransfer.compressionRatioPct}%`
-                      : '0%'}{' '}
-                    ratio) · {preparedTransfer.totalChunks} chunks @ {chunkSize} B
-                  </div>
-                </div>
-              </div>
-
-              <span className="min-h-[32px] px-3 py-1 text-[11px] font-semibold m3-btn-filled rounded-md shrink-0 flex items-center">
-                Select File
-              </span>
-              <input
-                ref={fileInputRef}
-                id="file_input"
-                type="file"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    onFileUpload(f);
-                    e.target.value = '';
-                  }
-                }}
-                className="hidden"
-              />
-            </div>
-
-            {/* Quick Presets & Compression Configuration */}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] text-slate-400">Samples:</span>
-                <button
-                  type="button"
-                  onClick={() => onLoadPresetFile('TELEMETRY')}
-                  className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-                >
-                  telemetry.json
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onLoadPresetFile('SPEC')}
-                  className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-                >
-                  protocol.txt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onLoadPresetFile('SVG')}
-                  className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-                >
-                  reticle.svg
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-slate-400">Chunk Size:</span>
-                {[250, 350, 500].map((sz) => (
-                  <button
-                    key={sz}
-                    type="button"
-                    onClick={() => onChangeChunkSize(sz)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer border ${
-                      chunkSize === sz
-                        ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
-                        : 'm3-surface-low border-[var(--m3-outline-variant)] text-slate-400'
-                    }`}
-                  >
-                    {sz}B
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Transmission Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <div className="flex items-center gap-1.5">
-                {!isTransferring ? (
-                  <button
-                    type="button"
-                    onClick={handleStartTransfer}
-                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer rounded-md"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Start Transfer</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleStopTransfer}
-                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer rounded-md"
-                  >
-                    <Square className="w-3.5 h-3.5 fill-current" />
-                    <span>Stop Transfer</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setLoopStream((l) => !l)}
-                  className={`min-h-[38px] px-2.5 py-1.5 text-xs font-mono rounded-md border cursor-pointer flex items-center gap-1 ${
-                    loopStream
-                      ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)] font-bold'
-                      : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
-                  }`}
-                >
-                  <Repeat className="w-3.5 h-3.5" />
-                  <span>Loop: {loopStream ? 'ON' : 'OFF'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFlipQr((f) => !f)}
-                  className={`min-h-[38px] px-2.5 py-1.5 text-xs font-mono rounded-md border cursor-pointer flex items-center gap-1 ${
-                    flipQr
-                      ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)]'
-                      : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
-                  }`}
-                >
-                  <FlipHorizontal className="w-3.5 h-3.5" />
-                  <span>Flip QR</span>
-                </button>
-              </div>
-
-              {/* Speed selector */}
-              <div className="inline-flex rounded-md p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono">
-                {[50, 80, 120, 180].map((delay) => (
-                  <button
-                    key={delay}
-                    type="button"
-                    onClick={() => setFrameDelayMs(delay)}
-                    className={`px-2 py-1 rounded cursor-pointer ${
-                      frameDelayMs === delay
-                        ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] font-bold'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {delay}ms
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Transmission Status Banner */}
-            <div className="px-3 py-2 rounded-md bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]">
-              <span className="truncate">{senderUserMessage}</span>
-              <span className="font-bold text-[var(--m3-primary)] whitespace-nowrap shrink-0">
-                {currentChunkIndex === -1
-                  ? 'FRAME 0 (METADATA)'
-                  : `CHUNK #${currentChunkIndex + 1} / ${preparedTransfer.totalChunks}`}
-              </span>
-            </div>
-
-            {/* High-Contrast QR Code Transmission Canvas */}
-            <div className="flex flex-col items-center justify-center p-3 rounded-lg bg-white text-slate-900 border border-slate-300">
-              <canvas
-                ref={generatorCanvasRef}
-                id="qrcode"
-                style={{ transform: flipQr ? 'scaleX(-1)' : 'none' }}
-                className="max-w-full h-auto"
-              />
-              <div className="mt-2 text-[10px] font-mono text-slate-600 truncate max-w-sm text-center">
-                {currentChunkIndex === -1
-                  ? preparedTransfer.metadataJson
-                  : `Frame #${currentChunkIndex}: ${currentQrText.slice(0, 36)}...`}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ================= DATA RECEIVER MODE (/scanner) ================= */}
-        {(viewTab === 'SCANNER' || viewTab === 'DUAL') && (
-          <section
-            aria-label="Data Receiver Mode (QR Scanner)"
-            className={`${
-              viewTab === 'DUAL' ? 'lg:col-span-6' : 'max-w-3xl mx-auto w-full'
-            } m3-surface-card p-4 flex flex-col gap-3.5 border border-[var(--m3-outline-variant)]`}
-          >
-            {/* Header info */}
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
-              <div>
-                <h2 className="text-sm font-bold tracking-tight">Data Receiver (Scanner)</h2>
-                <p className="text-[11px] font-mono m3-text-muted">
-                  Scans optical QR frames, verifies chunk checksums &amp; inflates via Pako
-                </p>
-              </div>
-              <span
-                data-testid="scanner-progress-text"
-                className="text-xs font-mono font-bold text-[var(--m3-primary)] whitespace-nowrap shrink-0"
-              >
-                Progress: {scannerState.receivedCount} /{' '}
-                {scannerState.fileMetadata?.chunks || 0}
-              </span>
-            </div>
-
-            {/* Receiver Camera Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                {!cameraActive ? (
-                  <button
-                    type="button"
-                    onClick={() => startReceiverCamera(facingMode)}
-                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer rounded-md"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Start Receiver</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleStopReceiver}
-                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer rounded-md"
-                  >
-                    <CameraOff className="w-3.5 h-3.5" />
-                    <span>Stop Receiver</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleToggleFacingMode}
-                  className="min-h-[38px] px-3 py-1.5 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-md cursor-pointer flex items-center gap-1.5"
-                >
-                  <SwitchCamera className="w-3.5 h-3.5" />
-                  <span>{facingMode === 'environment' ? 'Rear Cam' : 'Front Cam'}</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  downloadedRef.current = false;
-                  setScannerState(createInitialAirgapScannerState());
-                }}
-                className="min-h-[38px] px-3 py-1.5 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-md cursor-pointer flex items-center gap-1 text-slate-400 hover:text-white"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Buffer</span>
-              </button>
-            </div>
-
-            {/* Receiver Status Bar */}
-            <div
-              role="status"
-              className="px-3 py-2 rounded-md bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]"
-            >
-              <span className="truncate">{scannerState.userMessage}</span>
-              <span className="font-bold whitespace-nowrap shrink-0">
-                {scannerState.isComplete
-                  ? '✔ INFLATED'
-                  : scannerState.isReceiving
-                  ? '● RECEIVING'
-                  : 'STANDBY'}
-              </span>
-            </div>
-
-            {/* Camera Viewfinder */}
-            <div className="w-full h-48 bg-[#03060f] border border-slate-800 rounded-lg overflow-hidden relative flex flex-col">
-              <div className="shrink-0 flex items-center justify-between px-2.5 py-1 text-[10px] font-mono text-slate-400 bg-slate-950/80 border-b border-slate-850">
-                <span>VIEWFINDER ({facingMode.toUpperCase()})</span>
-                <span className={cameraActive ? 'text-emerald-400' : 'text-slate-500'}>
-                  {cameraActive ? '● CAMERA SCANNING' : 'CAMERA OFF'}
-                </span>
-              </div>
-
-              <div className="relative flex-1 flex items-center justify-center p-2 overflow-hidden">
-                <video
-                  ref={videoRef}
-                  id="videoElement"
-                  muted
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-                <canvas ref={scanCanvasRef} className="hidden" />
-
-                {/* Reticle alignment box */}
-                <div className="absolute w-36 h-36 border-2 border-dashed border-cyan-400/80 rounded-lg pointer-events-none flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping opacity-60" />
-                </div>
-
-                {!cameraActive && (
-                  <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center p-4 text-center">
-                    <p className="text-xs font-semibold text-slate-200">Point Camera at Transmitting Screen</p>
-                    <p className="text-[11px] font-mono text-slate-400 mt-1 max-w-xs">
-                      Click “Start Receiver” to activate camera and scan the optical QR stream.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* COMPLETE CHUNKS INSPECTOR (LIST OF ALL DECODED & UNDECODED CHUNKS) */}
+      {/* MODE 2: SCANNER (RECEIVE FILE) — Dense 2-Column Horizontal Workbench */}
+      {viewTab === 'SCANNER' && (
+        <div
+          aria-label="Data Receiver Mode (QR Scanner)"
+          className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start"
+        >
+          <div className="lg:col-span-5">{renderScannerCameraStage()}</div>
+          <div className="lg:col-span-7">
             <ChunksInspector
               fileMetadata={scannerState.fileMetadata}
               decodedChunks={scannerState.decodedChunks}
@@ -767,9 +969,37 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                 }
               }}
             />
-          </section>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODE 3: DUAL TESTBED — Side-by-Side Generator (Left) + Scanner & Chunks Inspector (Right) */}
+      {viewTab === 'DUAL' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+          <div className="lg:col-span-5 flex flex-col gap-3">
+            {renderGeneratorQrStage()}
+            {renderGeneratorPayloadConfig()}
+          </div>
+          <div className="lg:col-span-7 flex flex-col gap-3">
+            {renderScannerCameraStage()}
+            <ChunksInspector
+              fileMetadata={scannerState.fileMetadata}
+              decodedChunks={scannerState.decodedChunks}
+              receivedCount={scannerState.receivedCount}
+              isComplete={scannerState.isComplete}
+              reconstructedBytes={scannerState.reconstructedBytes}
+              onTriggerDownload={() => {
+                if (scannerState.reconstructedBytes && scannerState.fileMetadata) {
+                  onTriggerDownload(
+                    scannerState.reconstructedBytes,
+                    scannerState.fileMetadata.name
+                  );
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

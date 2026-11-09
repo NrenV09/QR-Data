@@ -103,7 +103,7 @@ export const DEFAULT_MATERIAL_CONFIG: MaterialYouConfig = {
   customHex: '#4285F4',
   mode: 'dark',
   contrast: 'standard',
-  shapeScale: 'expressive',
+  shapeScale: 'compact',
   qrQuietZoneBoost: false,
   hapticVisualFeedback: true,
 };

@@ -41,7 +41,7 @@ import {
 } from './utils/materialYouTheme';
 import { usePWAOfflineEngine } from './utils/usePWA';
 
-const THEME_STORAGE_KEY = 'optilink_m3_theme_v1';
+const THEME_STORAGE_KEY = 'optilink_m3_theme_v2';
 
 export type AppWorkspaceMode = 'GENERATOR' | 'SCANNER' | 'DUAL' | 'ARQ';
 

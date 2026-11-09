@@ -2,11 +2,12 @@ import React, { useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock,
+  Copy,
   Download,
-  Filter,
   Grid,
   List,
   Search,
+  Columns2,
 } from 'lucide-react';
 
 interface ChunksInspectorProps {
@@ -18,8 +19,14 @@ interface ChunksInspectorProps {
   onTriggerDownload?: () => void;
 }
 
-export type ChunkFilter = 'ALL' | 'MISSING' | 'DECODED';
-export type ChunkViewMode = 'TABLE' | 'GRID' | 'SPLIT';
+export type ChunkFilter = 'ALL' | 'UNDECODED' | 'DECODED';
+export type ChunkViewMode = 'SPLIT' | 'TABLE' | 'GRID';
+
+export interface ChunkSlotItem {
+  index: number;
+  isDecoded: boolean;
+  byteLength: number | null;
+}
 
 export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
   fileMetadata,
@@ -32,16 +39,28 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
   const [filter, setFilter] = useState<ChunkFilter>('ALL');
   const [viewMode, setViewMode] = useState<ChunkViewMode>('SPLIT');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [copiedMissing, setCopiedMissing] = useState<boolean>(false);
 
-  const totalChunks = fileMetadata?.chunks ?? 0;
+  // Determine total chunks from scanned metadata, or infer from highest scanned chunk index if metadata hasn't arrived yet
+  const inferredTotalFromScanned = useMemo(() => {
+    const keys = Object.keys(decodedChunks)
+      .map(Number)
+      .filter((n) => !Number.isNaN(n) && n >= 0);
+    if (keys.length === 0) return 0;
+    return Math.max(...keys) + 1;
+  }, [decodedChunks]);
+
+  const totalChunks = fileMetadata?.chunks ?? inferredTotalFromScanned;
   const missingCount = Math.max(0, totalChunks - receivedCount);
   const progressPct =
-    totalChunks > 0 ? Math.min(100, Math.round((receivedCount / totalChunks) * 100)) : 0;
+    totalChunks > 0
+      ? Math.min(100, Math.round((receivedCount / totalChunks) * 100))
+      : 0;
 
   // Build the complete list of all chunks from 0 to totalChunks - 1
-  const chunkList = useMemo(() => {
-    if (!totalChunks) return [];
-    const list = [];
+  const chunkList = useMemo<ChunkSlotItem[]>(() => {
+    if (totalChunks <= 0) return [];
+    const list: ChunkSlotItem[] = [];
     for (let i = 0; i < totalChunks; i++) {
       const data = decodedChunks[i];
       const isDecoded = Boolean(data);
@@ -54,14 +73,24 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
     return list;
   }, [totalChunks, decodedChunks]);
 
+  const decodedList = useMemo(
+    () => chunkList.filter((c) => c.isDecoded),
+    [chunkList]
+  );
+
+  const undecodedList = useMemo(
+    () => chunkList.filter((c) => !c.isDecoded),
+    [chunkList]
+  );
+
   // Filter based on selected filter tab and search query
   const filteredChunks = useMemo(() => {
     return chunkList.filter((item) => {
-      if (filter === 'MISSING' && item.isDecoded) return false;
+      if (filter === 'UNDECODED' && item.isDecoded) return false;
       if (filter === 'DECODED' && !item.isDecoded) return false;
       if (searchQuery.trim() !== '') {
-        const queryNum = parseInt(searchQuery.trim(), 10);
-        if (!isNaN(queryNum)) {
+        const queryNum = parseInt(searchQuery.trim().replace(/^#/, ''), 10);
+        if (!Number.isNaN(queryNum)) {
           return item.index === queryNum;
         }
       }
@@ -69,44 +98,68 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
     });
   }, [chunkList, filter, searchQuery]);
 
-  if (!fileMetadata || totalChunks === 0) {
-    return (
-      <div className="m3-surface-low border border-[var(--m3-outline-variant)] rounded-[var(--m3-radius-md)] p-4 flex flex-col items-center justify-center text-center gap-2 min-h-[140px]">
-        <Clock className="w-5 h-5 m3-text-muted animate-pulse" />
-        <div className="text-xs font-semibold">Receiver Armed — Awaiting Transmission</div>
-        <p className="text-[11px] font-mono m3-text-muted max-w-sm">
-          Point camera at the transmitting device. Once the initial Metadata QR frame is scanned,
-          the live list of all decoded &amp; undecoded chunks will be indexed here.
-        </p>
-      </div>
-    );
-  }
+  const handleCopyMissingIndices = () => {
+    if (undecodedList.length === 0) return;
+    const text = undecodedList.map((c) => `#${c.index}`).join(', ');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    setCopiedMissing(true);
+    window.setTimeout(() => setCopiedMissing(false), 1600);
+  };
 
   return (
-    <div className="m3-surface-low border border-[var(--m3-outline-variant)] rounded-[var(--m3-radius-md)] flex flex-col gap-3 p-3.5">
-      {/* Top Header: File Summary, Counts & Overall Progress */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-[var(--m3-outline-variant)]">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-[var(--m3-primary)] truncate max-w-[220px] sm:max-w-xs">
-              {fileMetadata.name}
+    <div
+      data-testid="chunks-inspector"
+      className="m3-surface-low border border-[var(--m3-outline-variant)] rounded-[var(--m3-radius-md)] flex flex-col gap-2.5 p-3"
+    >
+      {/* Top Header Bar: File Name / Receiver State + Summary Counters + View Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--m3-outline-variant)]">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold tracking-tight text-[var(--m3-on-surface)]">
+              Decoded &amp; Undecoded Chunks Registry
             </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--m3-surface-container-high)] text-[var(--m3-on-surface-variant)]">
-              {totalChunks} Chunks
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold truncate max-w-[200px]">
+              {fileMetadata
+                ? fileMetadata.name
+                : totalChunks > 0
+                ? 'In-Flight Stream (Awaiting Metadata)'
+                : 'No Stream Scanned Yet'}
             </span>
           </div>
-          <div className="text-[11px] font-mono m3-text-muted mt-0.5">
-            Decoded: <strong className="text-[var(--m3-on-surface)]">{receivedCount}</strong> · Missing:{' '}
-            <strong className={missingCount > 0 ? 'text-amber-400' : 'text-emerald-400'}>
-              {missingCount}
-            </strong>{' '}
-            · Progress: <strong className="text-[var(--m3-on-surface)]">{progressPct}%</strong>
+          <div className="text-[11px] font-mono m3-text-muted mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <span>
+              Total: <strong className="text-[var(--m3-on-surface)]">{totalChunks}</strong>
+            </span>
+            <span>
+              Decoded:{' '}
+              <strong className="text-emerald-400" data-testid="decoded-chunks-count">
+                {receivedCount}
+              </strong>
+            </span>
+            <span>
+              Undecoded:{' '}
+              <strong
+                className={missingCount > 0 ? 'text-amber-400' : 'text-slate-400'}
+                data-testid="undecoded-chunks-count"
+              >
+                {missingCount}
+              </strong>
+            </span>
+            <span>
+              Completion: <strong className="text-[var(--m3-on-surface)]">{progressPct}%</strong>
+            </span>
           </div>
         </div>
 
         {/* View Mode & Filter Controls */}
         <div className="flex flex-wrap items-center gap-1.5">
-          <div className="inline-flex rounded-md p-0.5 bg-[var(--m3-surface-container-high)] text-[11px] font-mono">
+          <div
+            role="group"
+            aria-label="Filter Chunks"
+            className="inline-flex rounded p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono"
+          >
             <button
               type="button"
               onClick={() => setFilter('ALL')}
@@ -120,14 +173,14 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setFilter('MISSING')}
+              onClick={() => setFilter('UNDECODED')}
               className={`px-2 py-1 rounded transition-colors cursor-pointer ${
-                filter === 'MISSING'
+                filter === 'UNDECODED'
                   ? 'bg-amber-500 text-black font-bold'
                   : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
               }`}
             >
-              Missing ({missingCount})
+              Undecoded ({missingCount})
             </button>
             <button
               type="button"
@@ -142,112 +195,248 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
             </button>
           </div>
 
-          <div className="inline-flex rounded-md p-0.5 bg-[var(--m3-surface-container-high)]">
+          <div
+            role="group"
+            aria-label="Chunk Display Layout"
+            className="inline-flex rounded p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono"
+          >
             <button
               type="button"
-              title="Table / List View"
-              onClick={() => setViewMode('TABLE')}
-              className={`p-1 rounded cursor-pointer ${
-                viewMode === 'TABLE' ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)]' : 'm3-text-muted'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Grid Matrix View"
-              onClick={() => setViewMode('GRID')}
-              className={`p-1 rounded cursor-pointer ${
-                viewMode === 'GRID' ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)]' : 'm3-text-muted'
-              }`}
-            >
-              <Grid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Split View (Grid + Table)"
+              title="Side-by-Side Decoded & Undecoded Lists + Table"
               onClick={() => setViewMode('SPLIT')}
-              className={`p-1 rounded cursor-pointer ${
-                viewMode === 'SPLIT' ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)]' : 'm3-text-muted'
+              className={`px-2 py-1 rounded cursor-pointer flex items-center gap-1 ${
+                viewMode === 'SPLIT'
+                  ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)] font-bold'
+                  : 'm3-text-muted'
               }`}
             >
-              <span className="text-[10px] font-mono px-1 font-bold">Split</span>
+              <Columns2 className="w-3 h-3" />
+              <span>Split Lists</span>
+            </button>
+            <button
+              type="button"
+              title="Unified Table View"
+              onClick={() => setViewMode('TABLE')}
+              className={`px-2 py-1 rounded cursor-pointer flex items-center gap-1 ${
+                viewMode === 'TABLE'
+                  ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)] font-bold'
+                  : 'm3-text-muted'
+              }`}
+            >
+              <List className="w-3 h-3" />
+              <span>Table</span>
+            </button>
+            <button
+              type="button"
+              title="Compact Index Matrix"
+              onClick={() => setViewMode('GRID')}
+              className={`px-2 py-1 rounded cursor-pointer flex items-center gap-1 ${
+                viewMode === 'GRID'
+                  ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)] font-bold'
+                  : 'm3-text-muted'
+              }`}
+            >
+              <Grid className="w-3 h-3" />
+              <span>Matrix</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="w-full h-2 rounded-full bg-[var(--m3-surface-container-high)] overflow-hidden">
+      {/* Compact Progress Track */}
+      <div className="w-full h-1.5 rounded-full bg-[var(--m3-surface-container-high)] overflow-hidden">
         <div
           className="h-full transition-all duration-150 rounded-full bg-[var(--m3-primary)]"
           style={{ width: `${progressPct}%` }}
         />
       </div>
 
-      {/* Optional Grid Matrix (shown in GRID or SPLIT mode) */}
-      {(viewMode === 'GRID' || viewMode === 'SPLIT') && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between text-[10px] font-mono m3-text-muted">
-            <span>CHUNK RECEPTION MATRIX</span>
-            <span>
-              {receivedCount}/{totalChunks} captured
-            </span>
+      {/* SIDE-BY-SIDE DECODED & UNDECODED CHUNK LISTS (Shown in SPLIT Mode) */}
+      {viewMode === 'SPLIT' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* LEFT: UNDECODED (MISSING) CHUNKS LIST */}
+          <div
+            data-testid="undecoded-chunks-panel"
+            className="rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)] flex flex-col overflow-hidden"
+          >
+            <div className="px-2.5 py-1.5 bg-[var(--m3-surface-container-high)] border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-2 text-[10px] font-mono">
+              <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                <Clock className="w-3 h-3" />
+                <span>UNDECODED CHUNKS ({undecodedList.length})</span>
+              </span>
+              {undecodedList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleCopyMissingIndices}
+                  className="px-1.5 py-0.5 rounded bg-[var(--m3-surface)] text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer border border-[var(--m3-outline-variant)]"
+                >
+                  <Copy className="w-2.5 h-2.5" />
+                  <span>{copiedMissing ? 'Copied' : 'Copy IDs'}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-44 overflow-y-auto divide-y divide-[var(--m3-outline-variant)] text-[11px] font-mono">
+              {totalChunks === 0 ? (
+                <div className="p-3 text-slate-400 text-[11px]">
+                  No undecoded chunks queued yet. Point camera at Sender QR stream to index chunks.
+                </div>
+              ) : undecodedList.length === 0 ? (
+                <div className="p-3 text-emerald-400 font-semibold text-[11px] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>0 undecoded chunks remaining — all {totalChunks} chunks decoded!</span>
+                </div>
+              ) : (
+                undecodedList.map((item) => (
+                  <div
+                    key={item.index}
+                    className="px-2.5 py-1.5 flex items-center justify-between gap-2 hover:bg-[var(--m3-surface)]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-amber-300">
+                        Chunk #{item.index.toString().padStart(2, '0')}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Index {item.index}
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/50 text-amber-300 border border-amber-800/50">
+                      UNDECODED
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto p-1 rounded bg-[var(--m3-surface-container-low)]">
-            {chunkList.map((chunk) => (
-              <div
-                key={chunk.index}
-                title={`Chunk #${chunk.index}: ${
-                  chunk.isDecoded ? `Decoded (${chunk.byteLength} B)` : 'Missing / Awaiting scan'
-                }`}
-                className={`w-6 h-6 rounded text-[9px] font-mono font-bold flex items-center justify-center transition-all ${
-                  chunk.isDecoded
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'border border-dashed border-slate-700 text-slate-400 bg-slate-900/50'
-                }`}
-              >
-                {chunk.index}
-              </div>
-            ))}
+
+          {/* RIGHT: DECODED (VERIFIED) CHUNKS LIST */}
+          <div
+            data-testid="decoded-chunks-panel"
+            className="rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)] flex flex-col overflow-hidden"
+          >
+            <div className="px-2.5 py-1.5 bg-[var(--m3-surface-container-high)] border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-2 text-[10px] font-mono">
+              <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>DECODED CHUNKS ({decodedList.length})</span>
+              </span>
+              <span className="text-slate-400">
+                {decodedList.reduce((acc, c) => acc + (c.byteLength || 0), 0)} B buffered
+              </span>
+            </div>
+
+            <div className="max-h-44 overflow-y-auto divide-y divide-[var(--m3-outline-variant)] text-[11px] font-mono">
+              {decodedList.length === 0 ? (
+                <div className="p-3 text-slate-400 text-[11px]">
+                  0 chunks decoded so far. Scanned QR frames will appear here in real time.
+                </div>
+              ) : (
+                decodedList.map((item) => (
+                  <div
+                    key={item.index}
+                    className="px-2.5 py-1.5 flex items-center justify-between gap-2 bg-emerald-950/10 hover:bg-[var(--m3-surface)]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-emerald-300">
+                        Chunk #{item.index.toString().padStart(2, '0')}
+                      </span>
+                      <span className="text-[10px] text-slate-300">
+                        {item.byteLength ?? 0} B
+                      </span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 font-semibold">
+                      DECODED
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Detailed List / Table View (shown in TABLE or SPLIT mode) */}
-      {(viewMode === 'TABLE' || viewMode === 'SPLIT') && (
-        <div className="flex flex-col gap-1.5">
+      {/* COMPACT INDEX MATRIX (Shown in GRID Mode or when totalChunks > 0 in SPLIT Mode) */}
+      {(viewMode === 'GRID' || (viewMode === 'SPLIT' && totalChunks > 0)) && (
+        <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between text-[10px] font-mono m3-text-muted">
-            <span>DETAILED CHUNKS REGISTRY ({filteredChunks.length} ITEMS)</span>
-            {totalChunks > 20 && (
-              <div className="flex items-center gap-1 bg-[var(--m3-surface-container-high)] px-1.5 py-0.5 rounded text-[10px]">
-                <Search className="w-3 h-3 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Find chunk #"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-transparent border-none outline-none font-mono text-[10px] w-20 text-[var(--m3-on-surface)]"
-                />
-              </div>
-            )}
+            <span>CHUNK INDEX MAP (0 .. {Math.max(0, totalChunks - 1)})</span>
+            <span className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-xs bg-emerald-600 inline-block" /> Decoded
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-xs border border-amber-500/80 bg-slate-900 inline-block" /> Undecoded
+              </span>
+            </span>
+          </div>
+          {totalChunks === 0 ? (
+            <div className="p-2.5 rounded bg-[var(--m3-surface-container)] border border-[var(--m3-outline-variant)] text-[11px] font-mono text-slate-400">
+              No chunk slots allocated yet — awaiting initial QR frame scan.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 rounded bg-[var(--m3-surface-container)] border border-[var(--m3-outline-variant)]">
+              {chunkList.map((chunk) => (
+                <div
+                  key={chunk.index}
+                  title={`Chunk #${chunk.index}: ${
+                    chunk.isDecoded
+                      ? `Decoded (${chunk.byteLength} B)`
+                      : 'Undecoded (Awaiting scan)'
+                  }`}
+                  className={`w-6 h-5 rounded-xs text-[9px] font-mono font-bold flex items-center justify-center transition-colors ${
+                    chunk.isDecoded
+                      ? 'bg-emerald-600 text-white'
+                      : 'border border-amber-600/50 text-amber-300/90 bg-amber-950/25'
+                  }`}
+                >
+                  {chunk.index}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* UNIFIED ALL-CHUNKS TABLE (Shown in TABLE Mode or when Filtered) */}
+      {(viewMode === 'TABLE' || filter !== 'ALL' || searchQuery.trim() !== '') && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2 text-[10px] font-mono m3-text-muted">
+            <span>
+              UNIFIED CHUNK TABLE ({filteredChunks.length} OF {totalChunks} SHOWN)
+            </span>
+            <div className="flex items-center gap-1 bg-[var(--m3-surface-container-high)] px-2 py-0.5 rounded border border-[var(--m3-outline-variant)]">
+              <Search className="w-3 h-3 text-slate-400" />
+              <input
+                type="text"
+                aria-label="Filter chunk by number"
+                placeholder="Jump to chunk #..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent border-none outline-none font-mono text-[10px] w-28 text-[var(--m3-on-surface)]"
+              />
+            </div>
           </div>
 
-          <div className="max-h-52 overflow-y-auto rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)]">
+          <div className="max-h-52 overflow-y-auto rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)]">
             <table className="w-full text-left border-collapse text-[11px] font-mono">
               <thead>
                 <tr className="border-b border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-high)] text-slate-400 text-[10px]">
-                  <th className="py-1 px-2.5 w-16">Chunk</th>
-                  <th className="py-1 px-2.5 w-28">Status</th>
-                  <th className="py-1 px-2.5 w-24">Data Size</th>
-                  <th className="py-1 px-2.5">Buffer Telemetry</th>
+                  <th className="py-1 px-2.5 w-20">Chunk ID</th>
+                  <th className="py-1 px-2.5 w-28">State</th>
+                  <th className="py-1 px-2.5 w-24">Payload</th>
+                  <th className="py-1 px-2.5">Buffer Diagnostics</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--m3-outline-variant)]">
-                {filteredChunks.length === 0 ? (
+                {totalChunks === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-slate-500 italic">
-                      No chunks match the current filter
+                    <td colSpan={4} className="py-4 px-3 text-center text-slate-400">
+                      0 chunks indexed — scan a transmitter QR frame to populate this table.
+                    </td>
+                  </tr>
+                ) : filteredChunks.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-4 px-3 text-center text-slate-400">
+                      No chunks match filter &ldquo;{filter}&rdquo;
                     </td>
                   </tr>
                 ) : (
@@ -255,32 +444,32 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                     <tr
                       key={chunk.index}
                       className={`hover:bg-[var(--m3-surface)] transition-colors ${
-                        chunk.isDecoded ? 'bg-emerald-950/15' : ''
+                        chunk.isDecoded ? 'bg-emerald-950/10' : ''
                       }`}
                     >
-                      <td className="py-1.5 px-2.5 font-bold">
+                      <td className="py-1 px-2.5 font-bold">
                         #{chunk.index.toString().padStart(2, '0')}
                       </td>
-                      <td className="py-1.5 px-2.5">
+                      <td className="py-1 px-2.5">
                         {chunk.isDecoded ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/60">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Decoded
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            DECODED
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-800/40">
-                            <Clock className="w-3 h-3" />
-                            Missing
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-950/50 px-1.5 py-0.5 rounded border border-amber-800/50">
+                            <Clock className="w-2.5 h-2.5" />
+                            UNDECODED
                           </span>
                         )}
                       </td>
-                      <td className="py-1.5 px-2.5 text-slate-300">
-                        {chunk.byteLength ? `${chunk.byteLength} B` : '—'}
+                      <td className="py-1 px-2.5 text-slate-300">
+                        {chunk.byteLength !== null ? `${chunk.byteLength} B` : '—'}
                       </td>
-                      <td className="py-1.5 px-2.5 text-[10px] text-slate-400 truncate">
+                      <td className="py-1 px-2.5 text-[10px] text-slate-400 truncate">
                         {chunk.isDecoded
-                          ? '✓ Verified in decompression buffer'
-                          : '⏳ Awaiting optical scan from camera'}
+                          ? 'Verified in receiver buffer'
+                          : 'Waiting for optical frame'}
                       </td>
                     </tr>
                   ))
@@ -291,23 +480,24 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
         </div>
       )}
 
-      {/* Completion & Download Banner */}
+      {/* Reconstructed File Download Bar (ONLY appears on Receiver when all chunks are decoded) */}
       {isComplete && reconstructedBytes && (
-        <div className="pt-2 flex items-center justify-between gap-3 border-t border-[var(--m3-outline-variant)]">
-          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+        <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--m3-outline-variant)]">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>
-              All {totalChunks} chunks received &amp; inflated ({reconstructedBytes.byteLength} B)
+              Transfer Complete: {totalChunks}/{totalChunks} chunks decoded &amp; inflated (
+              {reconstructedBytes.byteLength} B)
             </span>
           </div>
           {onTriggerDownload && (
             <button
               type="button"
               onClick={onTriggerDownload}
-              className="min-h-[34px] px-3 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled rounded flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Save / Download File</span>
+              <span>Save Reconstructed File</span>
             </button>
           )}
         </div>

@@ -86,3 +86,34 @@ test('Airgap transfer distinguishes generator role from receiver so generator ne
   handleTransferCompletion('SCANNER', 'CAMERA');
   assert.equal(downloadTriggerCount, 1, 'Receiver scanning via camera should trigger download on receiver device');
 });
+
+test('Scanner preserves pre-metadata chunks and tracks decoded vs undecoded chunks without leaking generator state', () => {
+  // Create a payload with multiple chunks using small chunkSize
+  const bytes = new Uint8Array(600);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = (i * 73 + 19) & 0xff;
+  }
+  const prepared = prepareAirgappedGeneratorPayload('high-entropy.bin', bytes, 120);
+  assert.ok(prepared.totalChunks >= 3);
+
+  // Scanner starts completely empty even after Generator prepares a payload (no self-popup)
+  let scanner = createInitialAirgapScannerState();
+  assert.equal(scanner.fileMetadata, null);
+  assert.equal(scanner.receivedCount, 0);
+  assert.deepEqual(scanner.decodedChunks, {});
+
+  // Scan chunk #1 BEFORE scanning metadata frame
+  scanner = stepAirgapScanner(scanner, prepared.encodedChunks[1]);
+  assert.equal(scanner.receivedCount, 1);
+  assert.ok(scanner.decodedChunks[1]);
+  assert.equal(scanner.decodedChunks[0], undefined);
+
+  // Now scan the metadata frame -> chunk #1 must remain decoded while chunk #0 and #2 remain undecoded
+  scanner = stepAirgapScanner(scanner, prepared.metadataJson);
+  assert.equal(scanner.fileMetadata?.name, 'high-entropy.bin');
+  assert.equal(scanner.fileMetadata?.chunks, prepared.totalChunks);
+  assert.equal(scanner.receivedCount, 1);
+  assert.ok(scanner.decodedChunks[1], 'Chunk #1 must be preserved when metadata arrives');
+  assert.equal(scanner.decodedChunks[0], undefined, 'Chunk #0 is still undecoded');
+});
+
