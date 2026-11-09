@@ -20,7 +20,7 @@ const CORE_ASSET_FILES = [
  * runs completely offline without internet or external files.
  */
 function optilinkOfflineSingleFilePlugin(): Plugin {
-  const rootDir = path.resolve(__dirname, '.');
+  const rootDir = path.resolve(typeof import.meta.dirname !== 'undefined' ? import.meta.dirname : __dirname, '.');
   const publicDir = path.resolve(rootDir, 'public');
   const distDir = path.resolve(rootDir, 'dist');
 
@@ -191,6 +191,7 @@ export default defineConfig(() => {
     build: {
       assetsInlineLimit: 100000000,
       cssCodeSplit: false,
+      chunkSizeWarningLimit: 2500,
       rollupOptions: {
         output: {
           inlineDynamicImports: true,
@@ -199,7 +200,7 @@ export default defineConfig(() => {
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(typeof import.meta.dirname !== 'undefined' ? import.meta.dirname : __dirname, '.'),
       },
     },
     server: {

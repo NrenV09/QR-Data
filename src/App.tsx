@@ -11,7 +11,15 @@ import {
 } from './components/ProtocolTelemetryPanel';
 import { StandaloneModal } from './components/StandaloneModal';
 import { MaterialYouSettingsModal } from './components/MaterialYouSettingsModal';
-import { AirgapStreamView } from './components/AirgapStreamView';
+import {
+  Camera,
+  Download,
+  Palette,
+  Play,
+  Radio,
+  Zap,
+} from 'lucide-react';
+import { AirgapStreamView, AirgapViewTab } from './components/AirgapStreamView';
 import {
   DeviceRole,
   OpticalPacket,
@@ -35,7 +43,7 @@ import { usePWAOfflineEngine } from './utils/usePWA';
 
 const THEME_STORAGE_KEY = 'optilink_m3_theme_v1';
 
-export type OpticalEngineMode = 'AIRGAP_GZIP_STREAM' | 'BIDIRECTIONAL_ARQ';
+export type AppWorkspaceMode = 'GENERATOR' | 'SCANNER' | 'DUAL' | 'ARQ';
 
 function loadStoredThemeConfig(): MaterialYouConfig {
   try {
@@ -113,8 +121,8 @@ function createPresetPayload(presetKey: 'TELEMETRY' | 'SPEC' | 'SVG'): {
 }
 
 export default function App() {
-  const [engineMode, setEngineMode] =
-    useState<OpticalEngineMode>('AIRGAP_GZIP_STREAM');
+  const [workspaceMode, setWorkspaceMode] =
+    useState<AppWorkspaceMode>('GENERATOR');
   const [role, setRole] = useState<DeviceRole>('SENDER');
   const [chunkSize, setChunkSize] = useState<number>(250);
   const [scanIntervalMs, setScanIntervalMs] = useState<number>(75);
@@ -574,65 +582,105 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Strict 3-Zone Top Bar Contract */}
+      {/* High-Density Professional Top Navigation Header */}
       <header
         style={{
           backgroundColor: 'var(--m3-surface-container)',
           borderColor: 'var(--m3-outline-variant)',
         }}
-        className="flex items-center justify-between gap-8 px-4 sm:px-6 py-3.5 border-b"
+        className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b shrink-0"
       >
-        {/* Zone 1: Single text element wordmark */}
-        <a
-          href="#top"
-          className="text-base sm:text-lg font-bold tracking-tight whitespace-nowrap shrink-0"
-        >
-          OptiLink ARQ
-        </a>
+        {/* Brand & Offline status pill */}
+        <div className="flex items-center gap-2.5">
+          <a
+            href="#top"
+            className="text-base font-bold tracking-tight whitespace-nowrap"
+          >
+            OptiLink ARQ
+          </a>
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--m3-surface-container-high)] text-[var(--m3-on-surface-variant)] border border-[var(--m3-outline-variant)]">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                swReady ? 'bg-emerald-400' : 'bg-amber-400'
+              }`}
+            />
+            {swReady ? 'Offline Ready' : 'PWA Active'}
+          </span>
+        </div>
 
-        {/* Zone 2: 4 concise single-line navigation links */}
+        {/* Unified Primary Operational Mode Switcher */}
         <nav
-          aria-label="Primary Navigation"
-          className="hidden md:flex items-center gap-6 text-sm font-medium m3-text-muted"
+          aria-label="Primary Transceiver Mode"
+          className="inline-flex rounded-lg p-0.5 m3-surface-low text-xs font-semibold gap-1"
         >
           <button
             type="button"
-            onClick={() => setEngineMode('AIRGAP_GZIP_STREAM')}
-            className="hover:underline transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={() => setWorkspaceMode('GENERATOR')}
+            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+              workspaceMode === 'GENERATOR'
+                ? 'm3-btn-filled font-bold shadow-xs'
+                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
+            }`}
           >
-            Generator & Scanner
+            <Play className="w-3.5 h-3.5" />
+            <span>Generator</span>
           </button>
           <button
             type="button"
-            onClick={() => setEngineMode('BIDIRECTIONAL_ARQ')}
-            className="hover:underline transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={() => setWorkspaceMode('SCANNER')}
+            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+              workspaceMode === 'SCANNER'
+                ? 'm3-btn-filled font-bold shadow-xs'
+                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
+            }`}
           >
-            Stop-and-Wait ARQ
+            <Camera className="w-3.5 h-3.5" />
+            <span>Scanner</span>
           </button>
           <button
             type="button"
-            onClick={() => setMaterialModalOpen(true)}
-            className="hover:underline transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={() => setWorkspaceMode('DUAL')}
+            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+              workspaceMode === 'DUAL'
+                ? 'm3-btn-filled font-bold shadow-xs'
+                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
+            }`}
           >
-            Material You
+            <Zap className="w-3.5 h-3.5" />
+            <span>Dual Testbed</span>
           </button>
           <button
             type="button"
-            onClick={() => setStandaloneModalOpen(true)}
-            className="hover:underline transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={() => setWorkspaceMode('ARQ')}
+            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+              workspaceMode === 'ARQ'
+                ? 'm3-btn-filled font-bold shadow-xs'
+                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
+            }`}
           >
-            Standalone HTML
+            <Radio className="w-3.5 h-3.5" />
+            <span>Optical ARQ</span>
           </button>
         </nav>
 
-        {/* Zone 3: 1 primary action */}
-        <div className="flex items-center shrink-0">
+        {/* Global Action Tools */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMaterialModalOpen(true)}
+            title="Material You Settings"
+            className="min-h-[32px] px-2.5 py-1 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-md cursor-pointer flex items-center gap-1 hover:bg-[var(--m3-surface)]"
+          >
+            <Palette className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Theme</span>
+          </button>
           <button
             type="button"
             onClick={() => setStandaloneModalOpen(true)}
-            className="min-h-[40px] px-4 py-2 text-xs font-semibold m3-btn-filled whitespace-nowrap shrink-0 cursor-pointer"
+            className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled rounded-md cursor-pointer whitespace-nowrap flex items-center gap-1.5"
           >
-            Export Single-File HTML
+            <Download className="w-3.5 h-3.5" />
+            <span>Export Single-File</span>
           </button>
         </div>
       </header>
@@ -640,49 +688,9 @@ export default function App() {
       {/* Main Responsive Workspace */}
       <main
         id="transceiver-workspace"
-        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-5"
+        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-4 flex flex-col gap-4"
       >
-        {/* Protocol Architecture Mode Switcher: Airgapped Gzip Stream (/generator & /scanner) vs Bidirectional Optical ARQ */}
-        <div className="m3-surface-card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div
-            role="group"
-            aria-label="Optical Protocol Mode"
-            className="w-full sm:w-auto grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-1.5 m3-surface-low"
-          >
-            <button
-              type="button"
-              onClick={() => setEngineMode('AIRGAP_GZIP_STREAM')}
-              aria-pressed={engineMode === 'AIRGAP_GZIP_STREAM'}
-              className={`min-h-[42px] px-4 py-2 text-xs font-semibold flex items-center justify-center cursor-pointer whitespace-nowrap truncate ${
-                engineMode === 'AIRGAP_GZIP_STREAM'
-                  ? 'm3-btn-filled'
-                  : 'm3-text-muted'
-              }`}
-            >
-              Gzip QR Stream (/generator & /scanner)
-            </button>
-            <button
-              type="button"
-              onClick={() => setEngineMode('BIDIRECTIONAL_ARQ')}
-              aria-pressed={engineMode === 'BIDIRECTIONAL_ARQ'}
-              className={`min-h-[42px] px-4 py-2 text-xs font-semibold flex items-center justify-center cursor-pointer whitespace-nowrap truncate ${
-                engineMode === 'BIDIRECTIONAL_ARQ'
-                  ? 'm3-btn-filled'
-                  : 'm3-text-muted'
-              }`}
-            >
-              Bidirectional ARQ (ACK Handshake)
-            </button>
-          </div>
-
-          <div className="text-xs font-mono m3-text-muted whitespace-nowrap shrink-0 px-1">
-            <span>{swReady ? 'Offline PWA Ready' : 'Offline Cache Active'}</span>
-            <span aria-hidden="true"> · </span>
-            <span>Pako Gzip Level-9</span>
-          </div>
-        </div>
-
-        {engineMode === 'AIRGAP_GZIP_STREAM' ? (
+        {workspaceMode !== 'ARQ' ? (
           <AirgapStreamView
             preparedTransfer={preparedAirgapTransfer}
             onFileUpload={handleFileUpload}
@@ -694,9 +702,11 @@ export default function App() {
             onTriggerDownload={(bytes, filename) =>
               triggerBlobDownload(bytes, filename, rawFileSource.mime)
             }
+            activeViewTab={workspaceMode}
+            onTabChange={(tab) => setWorkspaceMode(tab)}
           />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
             <section
               aria-label="Optical QR Emitter and Selfie Alignment Viewport"
               className="lg:col-span-5 flex flex-col gap-4"

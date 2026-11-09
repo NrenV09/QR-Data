@@ -4,18 +4,16 @@ import jsQR from 'jsqr';
 import {
   Camera,
   CameraOff,
-  CheckCircle2,
-  Download,
   FileArchive,
   FileText,
   FileUp,
   FlipHorizontal,
-  Palette,
   Play,
   Repeat,
   RotateCcw,
   Square,
   SwitchCamera,
+  Zap,
 } from 'lucide-react';
 import {
   AirgapScannerState,
@@ -23,6 +21,7 @@ import {
   createInitialAirgapScannerState,
   stepAirgapScanner,
 } from '../utils/airgapStreamProtocol';
+import { ChunksInspector } from './ChunksInspector';
 
 export type AirgapViewTab = 'GENERATOR' | 'SCANNER' | 'DUAL';
 
@@ -35,6 +34,8 @@ interface AirgapStreamViewProps {
   qrQuietZoneBoost: boolean;
   onOpenMaterialSettings: () => void;
   onTriggerDownload: (bytes: Uint8Array, filename: string) => void;
+  activeViewTab?: AirgapViewTab;
+  onTabChange?: (tab: AirgapViewTab) => void;
 }
 
 export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
@@ -46,13 +47,18 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   qrQuietZoneBoost,
   onOpenMaterialSettings,
   onTriggerDownload,
+  activeViewTab,
+  onTabChange,
 }) => {
-  const [viewTab, setViewTab] = useState<AirgapViewTab>('DUAL');
+  // Default to GENERATOR (Transmitter) so generator does not show scanner by default
+  const [internalViewTab, setInternalViewTab] = useState<AirgapViewTab>('GENERATOR');
+  const viewTab = activeViewTab ?? internalViewTab;
+  const setViewTab = onTabChange ?? setInternalViewTab;
 
   // Generator (Data Sender Mode) State
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
   const [senderUserMessage, setSenderUserMessage] = useState<string>(
-    'Choose or drop a file to get started'
+    'Choose or drop a file to transmit'
   );
   const [currentChunkIndex, setCurrentChunkIndex] = useState<number>(-1); // -1 = metadata frame
   const [currentQrText, setCurrentQrText] = useState<string>(
@@ -63,17 +69,14 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   const [flipQr, setFlipQr] = useState<boolean>(false);
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
 
-  // Scanner (Data Receiver Mode) State
+  // Scanner (Data Receiver Mode) State - STRICTLY INDEPENDENT FROM GENERATOR
   const [scannerState, setScannerState] = useState<AirgapScannerState>(() =>
     createInitialAirgapScannerState()
   );
   const [cameraActive, setCameraActive] = useState<boolean>(false);
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(
-    'environment'
-  );
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [opticalLoopbackCoupled, setOpticalLoopbackCoupled] =
-    useState<boolean>(false);
+  const [simulationBridgeActive, setSimulationBridgeActive] = useState<boolean>(false);
 
   const generatorCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -83,14 +86,14 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   const downloadedRef = useRef<boolean>(false);
 
   // Sync generator QR code whenever preparedTransfer changes
+  // CRITICAL: NEVER modify or touch scannerState here! Generator file changes must not leak to Scanner!
   useEffect(() => {
     setIsTransferring(false);
     setCurrentChunkIndex(-1);
     setCurrentQrText(preparedTransfer.metadataJson);
     setSenderUserMessage(
-      `Ready: ${preparedTransfer.name} (${preparedTransfer.totalChunks} Gzip chunks)`
+      `Ready: ${preparedTransfer.name} (${preparedTransfer.totalChunks} chunks)`
     );
-    downloadedRef.current = false;
   }, [preparedTransfer]);
 
   // Render high-contrast QR code on Generator canvas
@@ -103,7 +106,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       canvas,
       textToEncode,
       {
-        width: 300,
+        width: 280,
         margin: qrQuietZoneBoost ? 4 : 2,
         color: {
           dark: '#000000',
@@ -119,19 +122,19 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     );
   }, [currentQrText, qrQuietZoneBoost]);
 
-  // Feed QR frame into Scanner when coupled or scanned via camera
-  // CRITICAL: The Generator device transmitting the file must NEVER auto-download into its downloads folder.
-  // Automatic file download only triggers when frames are received via the physical camera on a receiver device.
+  // Feed QR frame into Scanner when scanned via camera or explicit simulation bridge
+  // CRITICAL: Generator transmitting files must NEVER auto-download into its downloads folder!
   const handleDecodedQrFrame = useCallback(
-    (decodedText: string, source: 'CAMERA' | 'COUPLED_BRIDGE' = 'CAMERA') => {
+    (decodedText: string, source: 'CAMERA' | 'SIMULATION_BRIDGE' = 'CAMERA') => {
       setScannerState((prev) => {
         const next = stepAirgapScanner(prev, decodedText);
         const isCameraScan = source === 'CAMERA';
-        const isReceiver = viewTab !== 'GENERATOR';
+        const isReceiverRole = viewTab !== 'GENERATOR';
 
+        // Auto-download only on physical receiver camera scans
         if (
           isCameraScan &&
-          isReceiver &&
+          isReceiverRole &&
           next.isComplete &&
           next.reconstructedBytes &&
           next.fileMetadata &&
@@ -146,9 +149,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     [onTriggerDownload, viewTab]
   );
 
-  // Animated Generator Loop (matches mohanram's `start_transfer` flow:
-  // 1. Emits JSON.stringify({ name, chunks }) with "Starting data transfer in few seconds ..."
-  // 2. Loops through i = 0..total_chunks-1 emitting `encode_data(i, chunk)` with `Transferring Chunk i/total_chunks ...`)
+  // Animated Generator Transmission Loop
   useEffect(() => {
     if (!isTransferring) return;
 
@@ -166,11 +167,11 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
         if (cancelled) break;
         setCurrentChunkIndex(-1);
         setCurrentQrText(preparedTransfer.metadataJson);
-        setSenderUserMessage('Starting data transfer in few seconds ...');
-        if (opticalLoopbackCoupled) {
-          handleDecodedQrFrame(preparedTransfer.metadataJson, 'COUPLED_BRIDGE');
+        setSenderUserMessage('Starting transmission: broadcasting metadata...');
+        if (simulationBridgeActive && viewTab === 'DUAL') {
+          handleDecodedQrFrame(preparedTransfer.metadataJson, 'SIMULATION_BRIDGE');
         }
-        await wait(650);
+        await wait(600);
 
         // Phase 2: Stream each Gzip-compressed chunk `0 .. totalChunks - 1`
         for (let i = 0; i < preparedTransfer.totalChunks; i++) {
@@ -179,10 +180,10 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
           setCurrentChunkIndex(i);
           setCurrentQrText(encodedData);
           setSenderUserMessage(
-            `Transferring Chunk ${i + 1}/${preparedTransfer.totalChunks} ...`
+            `Streaming Chunk #${i + 1} of ${preparedTransfer.totalChunks}...`
           );
-          if (opticalLoopbackCoupled) {
-            handleDecodedQrFrame(encodedData, 'COUPLED_BRIDGE');
+          if (simulationBridgeActive && viewTab === 'DUAL') {
+            handleDecodedQrFrame(encodedData, 'SIMULATION_BRIDGE');
           }
           await wait(frameDelayMs);
         }
@@ -191,7 +192,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       if (!cancelled) {
         setIsTransferring(false);
         setSenderUserMessage(
-          `Finished streaming ${preparedTransfer.totalChunks} chunks to Receiver.`
+          `Transmission cycle complete (${preparedTransfer.totalChunks} chunks).`
         );
       }
     };
@@ -207,30 +208,23 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     preparedTransfer,
     frameDelayMs,
     loopStream,
-    opticalLoopbackCoupled,
+    simulationBridgeActive,
+    viewTab,
     handleDecodedQrFrame,
   ]);
 
   const handleStartTransfer = () => {
-    downloadedRef.current = false;
-    if (opticalLoopbackCoupled) {
-      setScannerState({
-        ...createInitialAirgapScannerState(),
-        isReceiving: true,
-        userMessage: 'Waiting for Generator metadata QR frame...',
-      });
-    }
     setIsTransferring(true);
   };
 
   const handleStopTransfer = () => {
     setIsTransferring(false);
     setCurrentChunkIndex(-1);
-    setCurrentQrText('Choose file to get started');
-    setSenderUserMessage('Choose file to get started');
+    setCurrentQrText(preparedTransfer.metadataJson);
+    setSenderUserMessage('Transmission stopped');
   };
 
-  // Camera Scanner Controls (`scanner.html` flow)
+  // Camera Scanner Controls
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
@@ -245,16 +239,14 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   const startReceiverCamera = async (mode: 'environment' | 'user' = facingMode) => {
     setCameraError(null);
     downloadedRef.current = false;
-    setScannerState({
-      ...createInitialAirgapScannerState(),
+    setScannerState((prev) => ({
+      ...prev,
       isReceiving: true,
-      userMessage: 'Scanning for QR stream (Metadata + Chunks)...',
-    });
+      userMessage: 'Scanning for optical QR stream...',
+    }));
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraError(
-        'Camera API unavailable in this context. Coupled Optical Stream Receiver remains active.'
-      );
+      setCameraError('Camera API unavailable in this environment.');
       return;
     }
 
@@ -275,18 +267,19 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       }
       setCameraActive(true);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Requested camera device not found';
-      setCameraError(
-        `Camera notice: ${msg}. Receiver is ready to capture from Coupled Generator Stream.`
-      );
+      const msg = err instanceof Error ? err.message : 'Camera device not accessible';
+      setCameraError(`Camera Notice: ${msg}`);
       setCameraActive(false);
     }
   };
 
   const handleStopReceiver = () => {
     stopCamera();
-    setScannerState(createInitialAirgapScannerState());
+    setScannerState((prev) => ({
+      ...prev,
+      isReceiving: false,
+      userMessage: 'Scanner paused',
+    }));
   };
 
   const handleToggleFacingMode = () => {
@@ -301,14 +294,12 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     return () => stopCamera();
   }, [stopCamera]);
 
-  // Continuous 25ms Camera QR Scanning Loop (BarcodeDetector + jsQR fallback)
+  // Continuous Camera QR Scanning Loop
   useEffect(() => {
     if (!cameraActive || !scannerState.isReceiving) return;
 
     type BarcodeDetectorLike = {
-      detect: (
-        source: HTMLCanvasElement
-      ) => Promise<Array<{ rawValue?: string }>>;
+      detect: (source: HTMLCanvasElement) => Promise<Array<{ rawValue?: string }>>;
     };
     let nativeDetector: BarcodeDetectorLike | null = null;
     const win = window as unknown as {
@@ -329,11 +320,11 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
 
       const width = video.videoWidth || 480;
       const height = video.videoHeight || 480;
-      if (canvas.width !== width) canvas.width = width;
-      if (canvas.height !== height) canvas.height = height;
-
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) return;
+
       ctx.drawImage(video, 0, 0, width, height);
 
       if (nativeDetector) {
@@ -371,87 +362,34 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     }
   };
 
-  const targetTotalChunks =
-    scannerState.fileMetadata?.chunks || preparedTransfer.totalChunks;
-  const progressPct =
-    targetTotalChunks > 0
-      ? Math.min(
-          100,
-          Math.round((scannerState.receivedCount / targetTotalChunks) * 100)
-        )
-      : 0;
-
   return (
-    <div className="flex flex-col gap-5">
-      {/* Top Bar for Generator / Scanner View Mode & Material You Style */}
-      <div className="m3-surface-card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div
-          role="group"
-          aria-label="Airgapped Transfer View Selector"
-          className="w-full sm:w-auto grid grid-cols-3 gap-1.5 p-1.5 m3-surface-low"
-        >
+    <div className="flex flex-col gap-4">
+      {/* Simulation Bridge notice only displayed in Dual Testbed */}
+      {viewTab === 'DUAL' && (
+        <div className="m3-surface-card px-3 py-2 flex flex-wrap items-center justify-between gap-2 border border-[var(--m3-outline-variant)] text-xs font-mono">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-[var(--m3-on-surface)]">Dual Testbed:</span>
+            <span className="text-slate-400">Isolated Generator &amp; Scanner modules on one screen</span>
+          </div>
           <button
             type="button"
-            onClick={() => setViewTab('GENERATOR')}
-            aria-pressed={viewTab === 'GENERATOR'}
-            className={`min-h-[40px] px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold flex items-center justify-center cursor-pointer whitespace-nowrap truncate ${
-              viewTab === 'GENERATOR' ? 'm3-btn-filled' : 'm3-text-muted'
+            onClick={() => setSimulationBridgeActive((s) => !s)}
+            className={`min-h-[30px] px-3 py-1 rounded text-[11px] font-mono border transition-colors cursor-pointer ${
+              simulationBridgeActive
+                ? 'bg-amber-950/70 text-amber-300 border-amber-600/80 font-bold'
+                : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)] hover:text-white'
             }`}
           >
-            Generator
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewTab('SCANNER')}
-            aria-pressed={viewTab === 'SCANNER'}
-            className={`min-h-[40px] px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold flex items-center justify-center cursor-pointer whitespace-nowrap truncate ${
-              viewTab === 'SCANNER' ? 'm3-btn-filled' : 'm3-text-muted'
-            }`}
-          >
-            Scanner
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewTab('DUAL')}
-            aria-pressed={viewTab === 'DUAL'}
-            className={`min-h-[40px] px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold flex items-center justify-center cursor-pointer whitespace-nowrap truncate ${
-              viewTab === 'DUAL' ? 'm3-btn-filled' : 'm3-text-muted'
-            }`}
-          >
-            Dual View
+            Simulation Bridge: {simulationBridgeActive ? 'Coupled (Active)' : 'Uncoupled (Camera Only)'}
           </button>
         </div>
+      )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setOpticalLoopbackCoupled((c) => !c)}
-            aria-pressed={opticalLoopbackCoupled}
-            className={`min-h-[40px] px-3 py-1.5 text-xs font-medium cursor-pointer whitespace-nowrap ${
-              opticalLoopbackCoupled ? 'm3-btn-tonal' : 'm3-btn-outlined'
-            }`}
-          >
-            {opticalLoopbackCoupled
-              ? 'Optical Bridge: Linked'
-              : 'Optical Bridge: Camera Only'}
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenMaterialSettings}
-            className="min-h-[40px] px-3 py-1.5 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-          >
-            <Palette className="w-3.5 h-3.5" />
-            <span>Material You Style</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Responsive Grid: Generator (Sender) & Scanner (Receiver) */}
+      {/* Main Responsive Grid: Generator / Scanner / Dual */}
       <div
         className={`grid grid-cols-1 ${
           viewTab === 'DUAL' ? 'lg:grid-cols-12' : ''
-        } gap-6 items-start`}
+        } gap-4 items-start`}
       >
         {/* ================= DATA SENDER MODE (/generator) ================= */}
         {(viewTab === 'GENERATOR' || viewTab === 'DUAL') && (
@@ -459,23 +397,28 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
             aria-label="Data Sender Mode (QR Generator)"
             className={`${
               viewTab === 'DUAL' ? 'lg:col-span-6' : 'max-w-3xl mx-auto w-full'
-            } m3-surface-card p-5 flex flex-col gap-4`}
+            } m3-surface-card p-4 flex flex-col gap-3.5 border border-[var(--m3-outline-variant)]`}
           >
-            <div className="flex items-center justify-between gap-2">
+            {/* Header info */}
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
               <div>
-                <h2 className="text-base font-bold">
-                  Data Sender Mode (Generator)
-                </h2>
-                <p className="text-xs m3-text-muted mt-0.5">
-                  Compresses file with Pako Gzip (Level 9) and streams animated QR chunks
+                <h2 className="text-sm font-bold tracking-tight">Data Sender (Generator)</h2>
+                <p className="text-[11px] font-mono m3-text-muted">
+                  Gzip Level-9 compression · Continuous animated QR chunk stream
                 </p>
               </div>
-              <span className="text-xs font-mono m3-text-muted whitespace-nowrap shrink-0">
-                {isTransferring ? 'STREAMING' : 'READY'}
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
+                  isTransferring
+                    ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 animate-pulse'
+                    : 'bg-[var(--m3-surface-container-high)] text-slate-300'
+                }`}
+              >
+                {isTransferring ? 'Broadcasting' : 'Standby'}
               </span>
             </div>
 
-            {/* Interactive File Drop Zone */}
+            {/* Compact File Drop Zone */}
             <div
               data-testid="file-drop-zone"
               role="button"
@@ -501,39 +444,33 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                   fileInputRef.current?.click();
                 }
               }}
-              style={{
-                borderColor: isDraggingOver
-                  ? 'var(--m3-primary)'
-                  : 'var(--m3-outline)',
-                borderRadius: 'var(--m3-radius-md)',
-              }}
-              className={`border-2 border-dashed p-4 flex flex-col sm:flex-row items-center justify-between gap-3 cursor-pointer transition-all ${
-                isDraggingOver ? 'm3-btn-tonal scale-[1.01]' : 'm3-surface-low'
+              className={`border-2 border-dashed p-3 rounded-lg flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                isDraggingOver
+                  ? 'border-[var(--m3-primary)] bg-[var(--m3-surface-container-high)]'
+                  : 'border-[var(--m3-outline-variant)] m3-surface-low hover:border-slate-500'
               }`}
             >
-              <div className="flex items-center gap-3 text-center sm:text-left">
-                <div className="w-11 h-11 flex items-center justify-center m3-btn-tonal shrink-0">
-                  <FileUp className="w-5 h-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-md bg-[var(--m3-primary)] text-[var(--m3-on-primary)] flex items-center justify-center shrink-0">
+                  <FileUp className="w-4 h-4" />
                 </div>
-                <div>
-                  <div className="text-sm font-semibold">
-                    {isDraggingOver
-                      ? 'Release to Compress & Generate QR Stream'
-                      : 'Drag & Drop Any File Here, or Click to Choose File'}
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold truncate">
+                    {preparedTransfer.name}
                   </div>
-                  <div className="text-xs font-mono m3-text-muted mt-0.5">
-                    {preparedTransfer.name} · Raw {preparedTransfer.originalSize} B → Gzip{' '}
+                  <div className="text-[10px] font-mono m3-text-muted truncate">
+                    Raw: {preparedTransfer.originalSize} B → Gzip:{' '}
                     {preparedTransfer.compressedSize} B (
                     {preparedTransfer.compressionRatioPct > 0
-                      ? `-${preparedTransfer.compressionRatioPct}% saved`
-                      : 'compressed'}
-                    ) · {preparedTransfer.totalChunks} chunks
+                      ? `-${preparedTransfer.compressionRatioPct}%`
+                      : '0%'}{' '}
+                    ratio) · {preparedTransfer.totalChunks} chunks @ {chunkSize} B
                   </div>
                 </div>
               </div>
 
-              <span className="min-h-[40px] px-3.5 py-2 text-xs font-semibold m3-btn-filled flex items-center whitespace-nowrap shrink-0">
-                Choose File
+              <span className="min-h-[32px] px-3 py-1 text-[11px] font-semibold m3-btn-filled rounded-md shrink-0 flex items-center">
+                Select File
               </span>
               <input
                 ref={fileInputRef}
@@ -550,54 +487,71 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
               />
             </div>
 
-            {/* Sample Payload Quick-Loaders */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs m3-text-muted">Sample Files:</span>
-              <button
-                type="button"
-                onClick={() => onLoadPresetFile('TELEMETRY')}
-                className="min-h-[36px] px-2.5 py-1 text-xs font-medium m3-btn-outlined flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-              >
-                <FileArchive className="w-3.5 h-3.5" />
-                <span>calibration-telemetry.json</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onLoadPresetFile('SPEC')}
-                className="min-h-[36px] px-2.5 py-1 text-xs font-medium m3-btn-outlined flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>optical-arq-protocol.txt</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onLoadPresetFile('SVG')}
-                className="min-h-[36px] px-2.5 py-1 text-xs font-medium m3-btn-outlined flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>reticle-diagram.svg</span>
-              </button>
+            {/* Quick Presets & Compression Configuration */}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-slate-400">Samples:</span>
+                <button
+                  type="button"
+                  onClick={() => onLoadPresetFile('TELEMETRY')}
+                  className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+                >
+                  telemetry.json
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onLoadPresetFile('SPEC')}
+                  className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+                >
+                  protocol.txt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onLoadPresetFile('SVG')}
+                  className="px-2 py-0.5 rounded text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
+                >
+                  reticle.svg
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-slate-400">Chunk Size:</span>
+                {[250, 350, 500].map((sz) => (
+                  <button
+                    key={sz}
+                    type="button"
+                    onClick={() => onChangeChunkSize(sz)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer border ${
+                      chunkSize === sz
+                        ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
+                        : 'm3-surface-low border-[var(--m3-outline-variant)] text-slate-400'
+                    }`}
+                  >
+                    {sz}B
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Start Transfer / Stop Transfer Primary Controls + Stream Speed */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
+            {/* Transmission Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="flex items-center gap-1.5">
                 {!isTransferring ? (
                   <button
                     type="button"
                     onClick={handleStartTransfer}
-                    className="min-h-[44px] px-5 py-2.5 text-xs font-semibold m3-btn-filled flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer rounded-md"
                   >
-                    <Play className="w-4 h-4" />
+                    <Play className="w-3.5 h-3.5 fill-current" />
                     <span>Start Transfer</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={handleStopTransfer}
-                    className="min-h-[44px] px-5 py-2.5 text-xs font-semibold m3-btn-tonal flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer rounded-md"
                   >
-                    <Square className="w-4 h-4" />
+                    <Square className="w-3.5 h-3.5 fill-current" />
                     <span>Stop Transfer</span>
                   </button>
                 )}
@@ -605,21 +559,23 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setLoopStream((l) => !l)}
-                  aria-pressed={loopStream}
-                  className={`min-h-[44px] px-3 py-2 text-xs font-medium flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                    loopStream ? 'm3-btn-tonal' : 'm3-btn-outlined'
+                  className={`min-h-[38px] px-2.5 py-1.5 text-xs font-mono rounded-md border cursor-pointer flex items-center gap-1 ${
+                    loopStream
+                      ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)] font-bold'
+                      : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
                   }`}
                 >
                   <Repeat className="w-3.5 h-3.5" />
-                  <span>{loopStream ? 'Loop: ON' : 'Single Pass'}</span>
+                  <span>Loop: {loopStream ? 'ON' : 'OFF'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setFlipQr((f) => !f)}
-                  aria-pressed={flipQr}
-                  className={`min-h-[44px] px-3 py-2 text-xs font-medium flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                    flipQr ? 'm3-btn-tonal' : 'm3-btn-outlined'
+                  className={`min-h-[38px] px-2.5 py-1.5 text-xs font-mono rounded-md border cursor-pointer flex items-center gap-1 ${
+                    flipQr
+                      ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)]'
+                      : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
                   }`}
                 >
                   <FlipHorizontal className="w-3.5 h-3.5" />
@@ -627,63 +583,47 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                 </button>
               </div>
 
-              {/* Frame Interval & Chunk Size */}
-              <div className="flex items-center gap-1.5">
-                {[50, 100, 180].map((ms) => (
+              {/* Speed selector */}
+              <div className="inline-flex rounded-md p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono">
+                {[50, 80, 120, 180].map((delay) => (
                   <button
-                    key={ms}
+                    key={delay}
                     type="button"
-                    onClick={() => setFrameDelayMs(ms)}
-                    className={`min-h-[38px] px-2.5 py-1 text-xs font-mono cursor-pointer whitespace-nowrap ${
-                      frameDelayMs === ms ? 'm3-btn-tonal font-semibold' : 'm3-btn-outlined'
+                    onClick={() => setFrameDelayMs(delay)}
+                    className={`px-2 py-1 rounded cursor-pointer ${
+                      frameDelayMs === delay
+                        ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] font-bold'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {ms}ms
+                    {delay}ms
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Live Generator Status Banner (`{{user_message}}` from generator.html) */}
-            <div
-              role="status"
-              aria-live="polite"
-              data-testid="generator-status"
-              className="px-4 py-2.5 m3-surface-high text-xs font-mono flex items-center justify-between gap-2"
-            >
+            {/* Transmission Status Banner */}
+            <div className="px-3 py-2 rounded-md bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]">
               <span className="truncate">{senderUserMessage}</span>
-              <span className="font-semibold whitespace-nowrap shrink-0">
+              <span className="font-bold text-[var(--m3-primary)] whitespace-nowrap shrink-0">
                 {currentChunkIndex === -1
-                  ? 'METADATA FRAME'
-                  : `CHUNK ${currentChunkIndex + 1} / ${preparedTransfer.totalChunks}`}
+                  ? 'FRAME 0 (METADATA)'
+                  : `CHUNK #${currentChunkIndex + 1} / ${preparedTransfer.totalChunks}`}
               </span>
             </div>
 
-            {/* High-Contrast QR Code Stage */}
-            <div
-              style={{ borderRadius: 'var(--m3-radius-lg)' }}
-              className="bg-white text-slate-950 p-5 flex flex-col items-center justify-center border-2 border-slate-300 shadow-sm"
-            >
-              <div
-                className={`transition-transform duration-150 ${
-                  flipQr ? '-scale-x-100' : ''
-                }`}
-              >
-                <canvas
-                  ref={generatorCanvasRef}
-                  data-testid="airgap-generator-qr"
-                  aria-label="Airgapped Generator QR Code"
-                  className="w-[240px] h-[240px] sm:w-[296px] sm:h-[296px] block"
-                />
-              </div>
-
-              <div className="w-full flex items-center justify-between text-[11px] font-mono text-slate-600 mt-3 pt-2 border-t border-slate-200">
-                <span className="truncate max-w-[200px] sm:max-w-[240px]">
-                  {currentQrText}
-                </span>
-                <span className="whitespace-nowrap shrink-0">
-                  GZIP CHUNK: {chunkSize} B
-                </span>
+            {/* High-Contrast QR Code Transmission Canvas */}
+            <div className="flex flex-col items-center justify-center p-3 rounded-lg bg-white text-slate-900 border border-slate-300">
+              <canvas
+                ref={generatorCanvasRef}
+                id="qrcode"
+                style={{ transform: flipQr ? 'scaleX(-1)' : 'none' }}
+                className="max-w-full h-auto"
+              />
+              <div className="mt-2 text-[10px] font-mono text-slate-600 truncate max-w-sm text-center">
+                {currentChunkIndex === -1
+                  ? preparedTransfer.metadataJson
+                  : `Frame #${currentChunkIndex}: ${currentQrText.slice(0, 36)}...`}
               </div>
             </div>
           </section>
@@ -695,45 +635,44 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
             aria-label="Data Receiver Mode (QR Scanner)"
             className={`${
               viewTab === 'DUAL' ? 'lg:col-span-6' : 'max-w-3xl mx-auto w-full'
-            } m3-surface-card p-5 flex flex-col gap-4`}
+            } m3-surface-card p-4 flex flex-col gap-3.5 border border-[var(--m3-outline-variant)]`}
           >
-            <div className="flex items-center justify-between gap-3">
+            {/* Header info */}
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
               <div>
-                <h2 className="text-base font-bold">
-                  Data Receiver Mode (Scanner)
-                </h2>
-                <p className="text-xs m3-text-muted mt-0.5">
-                  Scans animated QR frames, collects indexed chunks & inflates with Pako Gzip
+                <h2 className="text-sm font-bold tracking-tight">Data Receiver (Scanner)</h2>
+                <p className="text-[11px] font-mono m3-text-muted">
+                  Scans optical QR frames, verifies chunk checksums &amp; inflates via Pako
                 </p>
               </div>
               <span
                 data-testid="scanner-progress-text"
-                className="text-sm font-mono font-bold whitespace-nowrap shrink-0"
+                className="text-xs font-mono font-bold text-[var(--m3-primary)] whitespace-nowrap shrink-0"
               >
                 Progress: {scannerState.receivedCount} /{' '}
                 {scannerState.fileMetadata?.chunks || 0}
               </span>
             </div>
 
-            {/* Start Receiver / Stop Receiver Controls (matches scanner.html) */}
+            {/* Receiver Camera Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {!cameraActive ? (
                   <button
                     type="button"
                     onClick={() => startReceiverCamera(facingMode)}
-                    className="min-h-[44px] px-5 py-2.5 text-xs font-semibold m3-btn-filled flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer rounded-md"
                   >
-                    <Camera className="w-4 h-4" />
+                    <Camera className="w-3.5 h-3.5" />
                     <span>Start Receiver</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={handleStopReceiver}
-                    className="min-h-[44px] px-5 py-2.5 text-xs font-semibold m3-btn-tonal flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    className="min-h-[38px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal flex items-center gap-1.5 cursor-pointer rounded-md"
                   >
-                    <CameraOff className="w-4 h-4" />
+                    <CameraOff className="w-3.5 h-3.5" />
                     <span>Stop Receiver</span>
                   </button>
                 )}
@@ -741,14 +680,10 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                 <button
                   type="button"
                   onClick={handleToggleFacingMode}
-                  className="min-h-[44px] px-3.5 py-2 text-xs font-medium m3-btn-outlined flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  className="min-h-[38px] px-3 py-1.5 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-md cursor-pointer flex items-center gap-1.5"
                 >
                   <SwitchCamera className="w-3.5 h-3.5" />
-                  <span>
-                    {facingMode === 'environment'
-                      ? 'Camera: Rear (Environment)'
-                      : 'Camera: Front (Selfie)'}
-                  </span>
+                  <span>{facingMode === 'environment' ? 'Rear Cam' : 'Front Cam'}</span>
                 </button>
               </div>
 
@@ -758,172 +693,80 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                   downloadedRef.current = false;
                   setScannerState(createInitialAirgapScannerState());
                 }}
-                className="min-h-[44px] px-3 py-2 text-xs font-medium m3-btn-outlined flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                className="min-h-[38px] px-3 py-1.5 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-md cursor-pointer flex items-center gap-1 text-slate-400 hover:text-white"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Clear Buffer</span>
+                <span>Reset Buffer</span>
               </button>
             </div>
 
-            {/* Receiver Status Message (`{{user_message}}` from scanner.html) */}
+            {/* Receiver Status Bar */}
             <div
               role="status"
-              aria-live="polite"
-              data-testid="scanner-status"
-              className="px-4 py-2.5 m3-surface-high text-xs font-mono flex items-center justify-between gap-2"
+              className="px-3 py-2 rounded-md bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]"
             >
               <span className="truncate">{scannerState.userMessage}</span>
-              <span className="font-semibold whitespace-nowrap shrink-0">
+              <span className="font-bold whitespace-nowrap shrink-0">
                 {scannerState.isComplete
-                  ? '✔ INFLATED & VERIFIED'
+                  ? '✔ INFLATED'
                   : scannerState.isReceiving
                   ? '● RECEIVING'
                   : 'STANDBY'}
               </span>
             </div>
 
-            {/* Progress Bar & Chunk Reception Matrix */}
-            <div className="m3-surface-low p-4 flex flex-col gap-3">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span>
-                  DECODED CHUNKS ({scannerState.receivedCount} /{' '}
-                  {targetTotalChunks})
-                </span>
-                <span className="font-semibold">{progressPct}%</span>
-              </div>
-
-              <div className="w-full h-3 m3-surface-card overflow-hidden p-0.5">
-                <div
-                  className="h-full transition-all duration-150 rounded-full"
-                  style={{
-                    width: `${progressPct}%`,
-                    backgroundColor: 'var(--m3-primary)',
-                  }}
-                />
-              </div>
-
-              {/* Visual Chunk Matrix Grid (0 .. targetTotalChunks - 1) */}
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {Array.from({ length: Math.min(64, targetTotalChunks) }).map(
-                  (_, idx) => {
-                    const captured = Boolean(scannerState.decodedChunks[idx]);
-                    return (
-                      <div
-                        key={idx}
-                        title={`Chunk #${idx}: ${
-                          captured ? 'Decoded' : 'Pending'
-                        }`}
-                        style={{
-                          backgroundColor: captured
-                            ? 'var(--m3-primary)'
-                            : 'var(--m3-surface-container-high)',
-                          color: captured
-                            ? 'var(--m3-on-primary)'
-                            : 'var(--m3-on-surface-variant)',
-                        }}
-                        className="w-7 h-7 rounded-md text-[10px] font-mono font-semibold flex items-center justify-center transition-colors"
-                      >
-                        {idx}
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-
-              {scannerState.isComplete &&
-                scannerState.reconstructedBytes &&
-                scannerState.fileMetadata && (
-                  <div className="pt-2 flex items-center justify-between gap-3 border-t border-slate-700/40">
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>
-                        Inflated {scannerState.fileMetadata.name} (
-                        {scannerState.reconstructedBytes.byteLength} B)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onTriggerDownload(
-                          scannerState.reconstructedBytes!,
-                          scannerState.fileMetadata!.name
-                        )
-                      }
-                      className="min-h-[38px] px-3.5 py-1.5 text-xs font-semibold m3-btn-filled flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>
-                        {downloadedRef.current
-                          ? 'Download Again'
-                          : 'Save / Download File'}
-                      </span>
-                    </button>
-                  </div>
-                )}
-            </div>
-
-            {/* Camera Viewfinder (`<video id="videoElement" muted autoplay playsinline>`) */}
-            <div
-              style={{ borderRadius: 'var(--m3-radius-lg)' }}
-              className="w-full h-64 bg-[#050811] border border-slate-800 overflow-hidden relative flex flex-col"
-            >
-              <div className="shrink-0 flex items-center justify-between px-3 py-2 text-[11px] font-mono text-slate-300 bg-slate-950/90 border-b border-slate-800/80">
-                <span>
-                  SCANNER CAMERA ({facingMode.toUpperCase()})
-                </span>
-                <span className="text-cyan-300">
-                  {cameraActive
-                    ? 'LIVE OPTICAL SCAN'
-                    : opticalLoopbackCoupled
-                    ? 'COUPLED STREAM LINK'
-                    : 'CAMERA STANDBY'}
+            {/* Camera Viewfinder */}
+            <div className="w-full h-48 bg-[#03060f] border border-slate-800 rounded-lg overflow-hidden relative flex flex-col">
+              <div className="shrink-0 flex items-center justify-between px-2.5 py-1 text-[10px] font-mono text-slate-400 bg-slate-950/80 border-b border-slate-850">
+                <span>VIEWFINDER ({facingMode.toUpperCase()})</span>
+                <span className={cameraActive ? 'text-emerald-400' : 'text-slate-500'}>
+                  {cameraActive ? '● CAMERA SCANNING' : 'CAMERA OFF'}
                 </span>
               </div>
 
-              <div className="relative flex-1 flex items-center justify-center overflow-hidden p-3">
+              <div className="relative flex-1 flex items-center justify-center p-2 overflow-hidden">
                 <video
                   ref={videoRef}
                   id="videoElement"
                   muted
                   autoPlay
                   playsInline
-                  className={`w-full h-full object-cover ${
-                    cameraActive ? 'block' : 'hidden'
-                  }`}
+                  className="w-full h-full object-cover"
                 />
+                <canvas ref={scanCanvasRef} className="hidden" />
+
+                {/* Reticle alignment box */}
+                <div className="absolute w-36 h-36 border-2 border-dashed border-cyan-400/80 rounded-lg pointer-events-none flex items-center justify-center">
+                  <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping opacity-60" />
+                </div>
 
                 {!cameraActive && (
-                  <div className="text-center px-4 max-w-xs z-10">
-                    <p className="text-xs font-semibold text-slate-200">
-                      {scannerState.isComplete
-                        ? `Data Transfer Complete (${scannerState.fileMetadata?.name})`
-                        : isTransferring && opticalLoopbackCoupled
-                        ? `Receiving Coupled Optical Stream (${scannerState.receivedCount}/${targetTotalChunks})...`
-                        : 'Point Camera at Sender QR Screen'}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                      Click &ldquo;Start Receiver&rdquo; to scan via hardware camera, or click &ldquo;Start Transfer&rdquo; on the left to watch live Gzip QR streaming and inflation.
+                  <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center p-4 text-center">
+                    <p className="text-xs font-semibold text-slate-200">Point Camera at Transmitting Screen</p>
+                    <p className="text-[11px] font-mono text-slate-400 mt-1 max-w-xs">
+                      Click “Start Receiver” to activate camera and scan the optical QR stream.
                     </p>
                   </div>
                 )}
-
-                {/* Target Alignment Reticle */}
-                <div className="pointer-events-none absolute w-40 h-40 rounded-xl border-2 border-dashed border-cyan-400/75 bg-cyan-500/5">
-                  <div className="w-full h-0.5 bg-cyan-400/60 animate-scanline" />
-                </div>
               </div>
-
-              {cameraError && (
-                <div
-                  role="status"
-                  className="shrink-0 bg-amber-950/90 border-t border-amber-500/40 px-3 py-1.5 text-[11px] font-mono text-amber-200"
-                >
-                  {cameraError}
-                </div>
-              )}
             </div>
 
-            <canvas ref={scanCanvasRef} className="hidden" />
+            {/* COMPLETE CHUNKS INSPECTOR (LIST OF ALL DECODED & UNDECODED CHUNKS) */}
+            <ChunksInspector
+              fileMetadata={scannerState.fileMetadata}
+              decodedChunks={scannerState.decodedChunks}
+              receivedCount={scannerState.receivedCount}
+              isComplete={scannerState.isComplete}
+              reconstructedBytes={scannerState.reconstructedBytes}
+              onTriggerDownload={() => {
+                if (scannerState.reconstructedBytes && scannerState.fileMetadata) {
+                  onTriggerDownload(
+                    scannerState.reconstructedBytes,
+                    scannerState.fileMetadata.name
+                  );
+                }
+              }}
+            />
           </section>
         )}
       </div>
