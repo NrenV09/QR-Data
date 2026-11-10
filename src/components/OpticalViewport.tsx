@@ -105,7 +105,7 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
           dark: '#000000',
           light: '#FFFFFF',
         },
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: 'L',
       },
       (err) => {
         if (err) {
@@ -161,8 +161,9 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
-          width: { ideal: 720 },
-          height: { ideal: 720 },
+          width: { ideal: 640 },
+          height: { ideal: 640 },
+          frameRate: { ideal: 60, min: 30 },
         },
         audio: false,
       });
@@ -188,15 +189,19 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
     };
   }, []);
 
-  // Throttled QR scanning loop (50-100ms) over hidden <canvas> with BarcodeDetector + jsQR fallback
+  // High-FPS QR scanning loop over fixed 360x360 center-cropped <canvas> with BarcodeDetector + jsQR fallback
   useEffect(() => {
     if (!cameraActive) return;
 
     let scansInWindow = 0;
     let windowStart = performance.now();
+    let frameCounter = 0;
+    let isDecoding = false;
 
     type BarcodeDetectorLike = {
-      detect: (source: HTMLCanvasElement) => Promise<Array<{ rawValue?: string }>>;
+      detect: (
+        source: HTMLVideoElement | HTMLCanvasElement
+      ) => Promise<Array<{ rawValue?: string }>>;
     };
 
     let nativeDetector: BarcodeDetectorLike | null = null;
@@ -211,20 +216,24 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
       }
     }
 
+    const SCAN_SIZE = 360;
+    const canvas = hiddenScanCanvasRef.current;
+    if (canvas && (canvas.width !== SCAN_SIZE || canvas.height !== SCAN_SIZE)) {
+      canvas.width = SCAN_SIZE;
+      canvas.height = SCAN_SIZE;
+    }
+    const ctx = canvas?.getContext('2d', {
+      willReadFrequently: true,
+      alpha: false,
+    });
+
     const timer = window.setInterval(async () => {
+      if (isDecoding) return;
       const video = videoRef.current;
-      const canvas = hiddenScanCanvasRef.current;
-      if (!video || !canvas || video.readyState < 2) return;
+      if (!video || video.readyState < 2) return;
 
-      const width = video.videoWidth || 480;
-      const height = video.videoHeight || 480;
-      if (canvas.width !== width) canvas.width = width;
-      if (canvas.height !== height) canvas.height = height;
-
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
-
-      ctx.drawImage(video, 0, 0, width, height);
+      isDecoding = true;
+      frameCounter++;
       scansInWindow++;
       const now = performance.now();
       if (now - windowStart >= 1000) {
@@ -233,33 +242,47 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
         windowStart = now;
       }
 
-      // 1. Try Native BarcodeDetector first if supported
-      if (nativeDetector) {
-        try {
-          const results = await nativeDetector.detect(canvas);
-          if (results && results.length > 0 && results[0].rawValue) {
-            setLastDetectedBox(true);
-            onQrScannedRef.current(results[0].rawValue);
-            return;
+      try {
+        // 1. Try Native BarcodeDetector directly on <video> first if supported
+        if (nativeDetector) {
+          try {
+            const results = await nativeDetector.detect(video);
+            if (results && results.length > 0 && results[0].rawValue) {
+              setLastDetectedBox(true);
+              onQrScannedRef.current(results[0].rawValue);
+              return;
+            }
+          } catch {
+            // Fallback to jsQR
           }
-        } catch {
-          // Fallback to jsQR
         }
-      }
 
-      // 2. Fallback to jsQR (supports normal + inverted/mirrored attempts)
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'attemptBoth',
-      });
+        // 2. Fast 360x360 center-cropped jsQR
+        if (canvas && ctx) {
+          const vw = video.videoWidth || 480;
+          const vh = video.videoHeight || 480;
+          const minDim = Math.min(vw, vh);
+          const sx = (vw - minDim) / 2;
+          const sy = (vh - minDim) / 2;
 
-      if (code && code.data) {
-        setLastDetectedBox(true);
-        onQrScannedRef.current(code.data);
-      } else {
-        setLastDetectedBox(false);
+          ctx.drawImage(video, sx, sy, minDim, minDim, 0, 0, SCAN_SIZE, SCAN_SIZE);
+          const imageData = ctx.getImageData(0, 0, SCAN_SIZE, SCAN_SIZE);
+          const invMode = frameCounter % 8 === 0 ? 'attemptBoth' : 'dontInvert';
+          const code = jsQR(imageData.data, SCAN_SIZE, SCAN_SIZE, {
+            inversionAttempts: invMode,
+          });
+
+          if (code && code.data) {
+            setLastDetectedBox(true);
+            onQrScannedRef.current(code.data);
+          } else {
+            setLastDetectedBox(false);
+          }
+        }
+      } finally {
+        isDecoding = false;
       }
-    }, scanIntervalMs);
+    }, Math.max(20, Math.min(scanIntervalMs, 40)));
 
     return () => window.clearInterval(timer);
   }, [cameraActive, scanIntervalMs]);

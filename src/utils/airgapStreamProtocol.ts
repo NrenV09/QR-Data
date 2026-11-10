@@ -35,6 +35,21 @@ export interface AirgapScannerState {
   lastScannedRaw: string;
 }
 
+const sharedUtf8Encoder = new TextEncoder();
+const sharedUtf8Decoder = new TextDecoder();
+
+/**
+ * Fast O(1) helper to extract the chunk index prefix from `"index,base64"` without decoding base64.
+ */
+export function peekAirgapChunkIndex(inputString: string): number | null {
+  if (!inputString || typeof inputString !== 'string') return null;
+  const commaIdx = inputString.indexOf(',');
+  if (commaIdx <= 0 || commaIdx >= 10) return null;
+  const index = parseInt(inputString.slice(0, commaIdx), 10);
+  if (Number.isNaN(index) || index < 0) return null;
+  return index;
+}
+
 /**
  * Wire-compatible chunk encoder matching mohanram's `encode_data(index, input_bytes)`:
  * Converts compressed byte slice -> char string -> TextEncoder UTF-8 bytes -> btoa -> `${index},${encoded_data}`
@@ -47,8 +62,7 @@ export function encodeAirgapChunk(
   for (let i = 0; i < inputBytes.length; i++) {
     encodedString += String.fromCharCode(inputBytes[i]);
   }
-  const utf8Encoder = new TextEncoder();
-  const utf8Bytes = utf8Encoder.encode(encodedString);
+  const utf8Bytes = sharedUtf8Encoder.encode(encodedString);
 
   let binaryStr = '';
   for (let i = 0; i < utf8Bytes.length; i++) {
@@ -71,14 +85,16 @@ export function decodeAirgapChunk(inputString: string): {
   data: number[];
 } | null {
   if (!inputString || typeof inputString !== 'string') return null;
-  const parts = inputString.split(',');
-  if (parts.length !== 2) return null;
+  const commaIdx = inputString.indexOf(',');
+  if (commaIdx <= 0) return null;
 
-  const index = parseInt(parts[0], 10);
-  if (Number.isNaN(index) || index < 0 || !parts[1]) return null;
+  const index = parseInt(inputString.slice(0, commaIdx), 10);
+  const rawBase64 = inputString.slice(commaIdx + 1);
+  if (Number.isNaN(index) || index < 0 || !rawBase64 || rawBase64.includes(',')) {
+    return null;
+  }
 
   try {
-    const rawBase64 = parts[1];
     let encodedArray: Uint8Array;
     if (typeof atob === 'function') {
       const encodedData = atob(rawBase64);
@@ -90,8 +106,7 @@ export function decodeAirgapChunk(inputString: string): {
       encodedArray = new Uint8Array(Buffer.from(rawBase64, 'base64'));
     }
 
-    const utf8Decoder = new TextDecoder();
-    const outputString = utf8Decoder.decode(encodedArray);
+    const outputString = sharedUtf8Decoder.decode(encodedArray);
     const dataArray = new Array<number>(outputString.length);
     for (let i = 0; i < outputString.length; i++) {
       dataArray[i] = outputString.charCodeAt(i);
@@ -177,6 +192,8 @@ export function stepAirgapScanner(
   decodedData: string
 ): AirgapScannerState {
   if (!decodedData || typeof decodedData !== 'string') return state;
+  // Fast O(1) skip if identical frame scanned back-to-back
+  if (decodedData === state.lastScannedRaw) return state;
 
   // 1. Check if frame is the metadata JSON packet containing `"chunks"`
   if (decodedData.includes('"chunks"') && decodedData.trim().startsWith('{')) {
@@ -188,6 +205,16 @@ export function stepAirgapScanner(
         typeof parsed.chunks === 'number' &&
         parsed.chunks > 0
       ) {
+        // Fast skip if metadata for the exact same active file is already registered
+        if (
+          !state.isComplete &&
+          state.fileMetadata &&
+          state.fileMetadata.name === parsed.name &&
+          state.fileMetadata.chunks === parsed.chunks
+        ) {
+          return state;
+        }
+
         // Preserve any chunks already scanned if the camera joined mid-stream before the metadata frame looped around
         const isDifferentCompletedFile =
           state.isComplete &&
@@ -268,7 +295,14 @@ export function stepAirgapScanner(
   }
 
   // 2. Check if frame is a comma-delimited chunk `"index,base64"`
-  if (decodedData.split(',').length === 2) {
+  const peekedIndex = peekAirgapChunkIndex(decodedData);
+  if (peekedIndex !== null) {
+    // O(1) fast-skip if this chunk index has ALREADY been decoded!
+    // Prevents expensive atob/UTF-8 decoding and prevents unnecessary React re-renders during high-FPS scanning.
+    if (state.decodedChunks[peekedIndex] !== undefined) {
+      return state;
+    }
+
     const rawData = decodeAirgapChunk(decodedData);
     if (!rawData) return state;
 

@@ -115,5 +115,14 @@ test('Scanner preserves pre-metadata chunks and tracks decoded vs undecoded chun
   assert.equal(scanner.receivedCount, 1);
   assert.ok(scanner.decodedChunks[1], 'Chunk #1 must be preserved when metadata arrives');
   assert.equal(scanner.decodedChunks[0], undefined, 'Chunk #0 is still undecoded');
+
+  // Re-scanning an already-decoded chunk (#1) or duplicate metadata frame must return the exact same state reference in O(1)
+  const stateRefBeforeDuplicate = scanner;
+  const afterDupMetadata = stepAirgapScanner(scanner, prepared.metadataJson);
+  assert.equal(afterDupMetadata, stateRefBeforeDuplicate, 'Duplicate metadata frame must fast-skip without cloning state');
+
+  const afterDupChunk = stepAirgapScanner(scanner, prepared.encodedChunks[1]);
+  assert.equal(afterDupChunk, stateRefBeforeDuplicate, 'Already-decoded chunk index must fast-skip without re-decoding or cloning state');
 });
+
 

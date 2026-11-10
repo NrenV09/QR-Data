@@ -41,7 +41,7 @@ import {
 } from './utils/materialYouTheme';
 import { usePWAOfflineEngine } from './utils/usePWA';
 
-const THEME_STORAGE_KEY = 'optilink_m3_theme_v2';
+const THEME_STORAGE_KEY = 'optilink_m3_theme_v3';
 
 export type AppWorkspaceMode = 'GENERATOR' | 'SCANNER' | 'DUAL' | 'ARQ';
 
@@ -611,12 +611,12 @@ export default function App() {
         {/* Unified Primary Operational Mode Switcher */}
         <nav
           aria-label="Primary Transceiver Mode"
-          className="inline-flex rounded-lg p-0.5 m3-surface-low text-xs font-semibold gap-1"
+          className="inline-flex rounded-full p-1 m3-surface-low text-xs font-semibold gap-1"
         >
           <button
             type="button"
             onClick={() => setWorkspaceMode('GENERATOR')}
-            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
               workspaceMode === 'GENERATOR'
                 ? 'm3-btn-filled font-bold shadow-xs'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -628,7 +628,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setWorkspaceMode('SCANNER')}
-            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
               workspaceMode === 'SCANNER'
                 ? 'm3-btn-filled font-bold shadow-xs'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -640,7 +640,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setWorkspaceMode('DUAL')}
-            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
               workspaceMode === 'DUAL'
                 ? 'm3-btn-filled font-bold shadow-xs'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -652,7 +652,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setWorkspaceMode('ARQ')}
-            className={`min-h-[32px] px-3 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
               workspaceMode === 'ARQ'
                 ? 'm3-btn-filled font-bold shadow-xs'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -669,7 +669,7 @@ export default function App() {
             type="button"
             onClick={() => setMaterialModalOpen(true)}
             title="Material You Settings"
-            className="min-h-[32px] px-2.5 py-1 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-md cursor-pointer flex items-center gap-1 hover:bg-[var(--m3-surface)]"
+            className="min-h-[34px] px-3.5 py-1 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-full cursor-pointer flex items-center gap-1.5 hover:bg-[var(--m3-surface)]"
           >
             <Palette className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Theme</span>
@@ -677,7 +677,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setStandaloneModalOpen(true)}
-            className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled rounded-md cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+            className="min-h-[34px] px-4 py-1 text-xs font-semibold m3-btn-filled rounded-full cursor-pointer whitespace-nowrap flex items-center gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Single-File</span>

@@ -111,16 +111,16 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
   return (
     <div
       data-testid="chunks-inspector"
-      className="m3-surface-low border border-[var(--m3-outline-variant)] rounded-[var(--m3-radius-md)] flex flex-col gap-2.5 p-3"
+      className="m3-surface-card flex flex-col gap-3 p-4"
     >
       {/* Top Header Bar: File Name / Receiver State + Summary Counters + View Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--m3-outline-variant)]">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-[var(--m3-outline-variant)]">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold tracking-tight text-[var(--m3-on-surface)]">
               Decoded &amp; Undecoded Chunks Registry
             </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold truncate max-w-[200px]">
+            <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold truncate max-w-[200px]">
               {fileMetadata
                 ? fileMetadata.name
                 : totalChunks > 0
@@ -128,7 +128,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                 : 'No Stream Scanned Yet'}
             </span>
           </div>
-          <div className="text-[11px] font-mono m3-text-muted mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <div className="text-[11px] font-mono m3-text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
             <span>
               Total: <strong className="text-[var(--m3-on-surface)]">{totalChunks}</strong>
             </span>
@@ -158,12 +158,12 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
           <div
             role="group"
             aria-label="Filter Chunks"
-            className="inline-flex rounded p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono"
+            className="inline-flex rounded-full p-1 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[10px] font-mono gap-0.5"
           >
             <button
               type="button"
               onClick={() => setFilter('ALL')}
-              className={`px-2 py-1 rounded transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
                 filter === 'ALL'
                   ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] font-bold'
                   : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -174,7 +174,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
             <button
               type="button"
               onClick={() => setFilter('UNDECODED')}
-              className={`px-2 py-1 rounded transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
                 filter === 'UNDECODED'
                   ? 'bg-amber-500 text-black font-bold'
                   : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -185,7 +185,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
             <button
               type="button"
               onClick={() => setFilter('DECODED')}
-              className={`px-2 py-1 rounded transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
                 filter === 'DECODED'
                   ? 'bg-emerald-600 text-white font-bold'
                   : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
@@ -198,15 +198,15 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
           <div
             role="group"
             aria-label="Chunk Display Layout"
-            className="inline-flex rounded p-0.5 bg-[var(--m3-surface-container-high)] text-[10px] font-mono"
+            className="inline-flex rounded-full p-1 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[10px] font-mono gap-0.5"
           >
             <button
               type="button"
               title="Side-by-Side Decoded & Undecoded Lists + Table"
               onClick={() => setViewMode('SPLIT')}
-              className={`px-2 py-1 rounded cursor-pointer flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-full cursor-pointer flex items-center gap-1 ${
                 viewMode === 'SPLIT'
-                  ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)] font-bold'
+                  ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
                   : 'm3-text-muted'
               }`}
             >
@@ -217,9 +217,9 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
               type="button"
               title="Unified Table View"
               onClick={() => setViewMode('TABLE')}
-              className={`px-2 py-1 rounded cursor-pointer flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-full cursor-pointer flex items-center gap-1 ${
                 viewMode === 'TABLE'
-                  ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)] font-bold'
+                  ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
                   : 'm3-text-muted'
               }`}
             >
@@ -230,9 +230,9 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
               type="button"
               title="Compact Index Matrix"
               onClick={() => setViewMode('GRID')}
-              className={`px-2 py-1 rounded cursor-pointer flex items-center gap-1 ${
+              className={`px-2.5 py-1 rounded-full cursor-pointer flex items-center gap-1 ${
                 viewMode === 'GRID'
-                  ? 'bg-[var(--m3-surface)] text-[var(--m3-primary)] font-bold'
+                  ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
                   : 'm3-text-muted'
               }`}
             >
@@ -243,8 +243,8 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
         </div>
       </div>
 
-      {/* Compact Progress Track */}
-      <div className="w-full h-1.5 rounded-full bg-[var(--m3-surface-container-high)] overflow-hidden">
+      {/* Expressive Smooth Progress Track */}
+      <div className="w-full h-2.5 rounded-full bg-[var(--m3-surface-container-low)] overflow-hidden p-0.5 border border-[var(--m3-outline-variant)]">
         <div
           className="h-full transition-all duration-150 rounded-full bg-[var(--m3-primary)]"
           style={{ width: `${progressPct}%` }}
@@ -253,13 +253,14 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
       {/* SIDE-BY-SIDE DECODED & UNDECODED CHUNK LISTS (Shown in SPLIT Mode) */}
       {viewMode === 'SPLIT' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {/* LEFT: UNDECODED (MISSING) CHUNKS LIST */}
           <div
             data-testid="undecoded-chunks-panel"
-            className="rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)] flex flex-col overflow-hidden"
+            style={{ borderRadius: 'var(--m3-radius-md)' }}
+            className="border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)] flex flex-col overflow-hidden"
           >
-            <div className="px-2.5 py-1.5 bg-[var(--m3-surface-container-high)] border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-2 text-[10px] font-mono">
+            <div className="px-3 py-2 bg-[var(--m3-surface-container-high)] border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-2 text-[10px] font-mono">
               <span className="font-bold text-amber-400 flex items-center gap-1.5">
                 <Clock className="w-3 h-3" />
                 <span>UNDECODED CHUNKS ({undecodedList.length})</span>
@@ -268,7 +269,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                 <button
                   type="button"
                   onClick={handleCopyMissingIndices}
-                  className="px-1.5 py-0.5 rounded bg-[var(--m3-surface)] text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer border border-[var(--m3-outline-variant)]"
+                  className="px-2 py-0.5 rounded-full bg-[var(--m3-surface)] text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer border border-[var(--m3-outline-variant)]"
                 >
                   <Copy className="w-2.5 h-2.5" />
                   <span>{copiedMissing ? 'Copied' : 'Copy IDs'}</span>
@@ -278,11 +279,11 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
             <div className="max-h-44 overflow-y-auto divide-y divide-[var(--m3-outline-variant)] text-[11px] font-mono">
               {totalChunks === 0 ? (
-                <div className="p-3 text-slate-400 text-[11px]">
+                <div className="p-3.5 text-slate-400 text-[11px]">
                   No undecoded chunks queued yet. Point camera at Sender QR stream to index chunks.
                 </div>
               ) : undecodedList.length === 0 ? (
-                <div className="p-3 text-emerald-400 font-semibold text-[11px] flex items-center gap-1.5">
+                <div className="p-3.5 text-emerald-400 font-semibold text-[11px] flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                   <span>0 undecoded chunks remaining — all {totalChunks} chunks decoded!</span>
                 </div>
@@ -290,7 +291,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                 undecodedList.map((item) => (
                   <div
                     key={item.index}
-                    className="px-2.5 py-1.5 flex items-center justify-between gap-2 hover:bg-[var(--m3-surface)]"
+                    className="px-3 py-1.5 flex items-center justify-between gap-2 hover:bg-[var(--m3-surface)]"
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-amber-300">
@@ -300,7 +301,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                         Index {item.index}
                       </span>
                     </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/50 text-amber-300 border border-amber-800/50">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/50 text-amber-300 border border-amber-800/50">
                       UNDECODED
                     </span>
                   </div>
@@ -312,9 +313,10 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
           {/* RIGHT: DECODED (VERIFIED) CHUNKS LIST */}
           <div
             data-testid="decoded-chunks-panel"
-            className="rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)] flex flex-col overflow-hidden"
+            style={{ borderRadius: 'var(--m3-radius-md)' }}
+            className="border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)] flex flex-col overflow-hidden"
           >
-            <div className="px-2.5 py-1.5 bg-[var(--m3-surface-container-high)] border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-2 text-[10px] font-mono">
+            <div className="px-3 py-2 bg-[var(--m3-surface-container-high)] border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-2 text-[10px] font-mono">
               <span className="font-bold text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3 h-3" />
                 <span>DECODED CHUNKS ({decodedList.length})</span>
@@ -326,14 +328,14 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
             <div className="max-h-44 overflow-y-auto divide-y divide-[var(--m3-outline-variant)] text-[11px] font-mono">
               {decodedList.length === 0 ? (
-                <div className="p-3 text-slate-400 text-[11px]">
+                <div className="p-3.5 text-slate-400 text-[11px]">
                   0 chunks decoded so far. Scanned QR frames will appear here in real time.
                 </div>
               ) : (
                 decodedList.map((item) => (
                   <div
                     key={item.index}
-                    className="px-2.5 py-1.5 flex items-center justify-between gap-2 bg-emerald-950/10 hover:bg-[var(--m3-surface)]"
+                    className="px-3 py-1.5 flex items-center justify-between gap-2 bg-emerald-950/10 hover:bg-[var(--m3-surface)]"
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-emerald-300">
@@ -343,7 +345,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                         {item.byteLength ?? 0} B
                       </span>
                     </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 font-semibold">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 font-semibold">
                       DECODED
                     </span>
                   </div>
@@ -356,24 +358,30 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
       {/* COMPACT INDEX MATRIX (Shown in GRID Mode or when totalChunks > 0 in SPLIT Mode) */}
       {(viewMode === 'GRID' || (viewMode === 'SPLIT' && totalChunks > 0)) && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[10px] font-mono m3-text-muted">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between text-[10px] font-mono m3-text-muted px-1">
             <span>CHUNK INDEX MAP (0 .. {Math.max(0, totalChunks - 1)})</span>
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2.5">
               <span className="inline-flex items-center gap-1">
-                <span className="w-2 h-2 rounded-xs bg-emerald-600 inline-block" /> Decoded
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block" /> Decoded
               </span>
               <span className="inline-flex items-center gap-1">
-                <span className="w-2 h-2 rounded-xs border border-amber-500/80 bg-slate-900 inline-block" /> Undecoded
+                <span className="w-2.5 h-2.5 rounded-full border border-amber-500/80 bg-slate-900 inline-block" /> Undecoded
               </span>
             </span>
           </div>
           {totalChunks === 0 ? (
-            <div className="p-2.5 rounded bg-[var(--m3-surface-container)] border border-[var(--m3-outline-variant)] text-[11px] font-mono text-slate-400">
+            <div
+              style={{ borderRadius: 'var(--m3-radius-md)' }}
+              className="p-3 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[11px] font-mono text-slate-400"
+            >
               No chunk slots allocated yet — awaiting initial QR frame scan.
             </div>
           ) : (
-            <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 rounded bg-[var(--m3-surface-container)] border border-[var(--m3-outline-variant)]">
+            <div
+              style={{ borderRadius: 'var(--m3-radius-md)' }}
+              className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2.5 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)]"
+            >
               {chunkList.map((chunk) => (
                 <div
                   key={chunk.index}
@@ -382,9 +390,9 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                       ? `Decoded (${chunk.byteLength} B)`
                       : 'Undecoded (Awaiting scan)'
                   }`}
-                  className={`w-6 h-5 rounded-xs text-[9px] font-mono font-bold flex items-center justify-center transition-colors ${
+                  className={`w-7 h-6 rounded-lg text-[10px] font-mono font-bold flex items-center justify-center transition-colors ${
                     chunk.isDecoded
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-emerald-600 text-white shadow-xs'
                       : 'border border-amber-600/50 text-amber-300/90 bg-amber-950/25'
                   }`}
                 >
@@ -399,11 +407,11 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
       {/* UNIFIED ALL-CHUNKS TABLE (Shown in TABLE Mode or when Filtered) */}
       {(viewMode === 'TABLE' || filter !== 'ALL' || searchQuery.trim() !== '') && (
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2 text-[10px] font-mono m3-text-muted">
+          <div className="flex items-center justify-between gap-2 text-[10px] font-mono m3-text-muted px-1">
             <span>
               UNIFIED CHUNK TABLE ({filteredChunks.length} OF {totalChunks} SHOWN)
             </span>
-            <div className="flex items-center gap-1 bg-[var(--m3-surface-container-high)] px-2 py-0.5 rounded border border-[var(--m3-outline-variant)]">
+            <div className="flex items-center gap-1.5 bg-[var(--m3-surface-container-low)] px-2.5 py-1 rounded-full border border-[var(--m3-outline-variant)]">
               <Search className="w-3 h-3 text-slate-400" />
               <input
                 type="text"
@@ -416,14 +424,17 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
             </div>
           </div>
 
-          <div className="max-h-52 overflow-y-auto rounded border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container)]">
+          <div
+            style={{ borderRadius: 'var(--m3-radius-md)' }}
+            className="max-h-52 overflow-y-auto border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)]"
+          >
             <table className="w-full text-left border-collapse text-[11px] font-mono">
               <thead>
                 <tr className="border-b border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-high)] text-slate-400 text-[10px]">
-                  <th className="py-1 px-2.5 w-20">Chunk ID</th>
-                  <th className="py-1 px-2.5 w-28">State</th>
-                  <th className="py-1 px-2.5 w-24">Payload</th>
-                  <th className="py-1 px-2.5">Buffer Diagnostics</th>
+                  <th className="py-1.5 px-3 w-20">Chunk ID</th>
+                  <th className="py-1.5 px-3 w-28">State</th>
+                  <th className="py-1.5 px-3 w-24">Payload</th>
+                  <th className="py-1.5 px-3">Buffer Diagnostics</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--m3-outline-variant)]">
@@ -447,26 +458,26 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
                         chunk.isDecoded ? 'bg-emerald-950/10' : ''
                       }`}
                     >
-                      <td className="py-1 px-2.5 font-bold">
+                      <td className="py-1.5 px-3 font-bold">
                         #{chunk.index.toString().padStart(2, '0')}
                       </td>
-                      <td className="py-1 px-2.5">
+                      <td className="py-1.5 px-3">
                         {chunk.isDecoded ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/60">
                             <CheckCircle2 className="w-2.5 h-2.5" />
                             DECODED
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-950/50 px-1.5 py-0.5 rounded border border-amber-800/50">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-800/50">
                             <Clock className="w-2.5 h-2.5" />
                             UNDECODED
                           </span>
                         )}
                       </td>
-                      <td className="py-1 px-2.5 text-slate-300">
+                      <td className="py-1.5 px-3 text-slate-300">
                         {chunk.byteLength !== null ? `${chunk.byteLength} B` : '—'}
                       </td>
-                      <td className="py-1 px-2.5 text-[10px] text-slate-400 truncate">
+                      <td className="py-1.5 px-3 text-[10px] text-slate-400 truncate">
                         {chunk.isDecoded
                           ? 'Verified in receiver buffer'
                           : 'Waiting for optical frame'}
@@ -482,7 +493,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
       {/* Reconstructed File Download Bar (ONLY appears on Receiver when all chunks are decoded) */}
       {isComplete && reconstructedBytes && (
-        <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--m3-outline-variant)]">
+        <div className="pt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--m3-outline-variant)]">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>
@@ -494,7 +505,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
             <button
               type="button"
               onClick={onTriggerDownload}
-              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled rounded flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              className="min-h-[34px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Save Reconstructed File</span>

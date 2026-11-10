@@ -21,9 +21,9 @@
     --m3-on-surface-variant: hsl(217 16% 72%);
     --m3-outline: hsl(217 16% 34%);
     --m3-outline-variant: hsl(217 16% 22%);
-    --m3-radius-lg: 12px;
-    --m3-radius-md: 8px;
-    --m3-radius-sm: 6px;
+    --m3-radius-lg: 28px;
+    --m3-radius-md: 18px;
+    --m3-radius-sm: 12px;
   }
 
   body {
