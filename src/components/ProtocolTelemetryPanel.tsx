@@ -165,32 +165,32 @@ export const ProtocolTelemetryPanel: React.FC<ProtocolTelemetryPanelProps> = ({
   return (
     <div className="flex flex-col gap-3">
       {/* Role & Configuration Panel */}
-      <div className="m3-surface-card p-3 flex flex-col gap-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--m3-outline-variant)]">
+      <div className="m3-surface-card overflow-hidden flex flex-col divide-y divide-[var(--m3-outline-variant)]">
+        <div className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider">
-              Stop-and-Wait Optical ARQ Control
+            <h2 className="text-sm font-semibold tracking-tight">
+              Stop-and-Wait Optical ARQ
             </h2>
-            <p className="text-[11px] font-mono m3-text-muted">
+            <p className="text-[11px] m3-text-muted">
               Bidirectional face-to-face handshake (INIT → ACK:0 → DATA → FIN)
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onToggleWakeLock}
               aria-pressed={wakeLockActive}
-              className={`min-h-[30px] px-2.5 py-1 text-[11px] font-mono flex items-center gap-1 rounded cursor-pointer border ${
+              className={`min-h-[32px] px-3 py-1 text-xs font-medium flex items-center gap-1.5 rounded-full cursor-pointer border ${
                 wakeLockActive
                   ? 'm3-btn-tonal'
-                  : 'm3-surface-low border-[var(--m3-outline-variant)]'
+                  : 'border-[var(--m3-outline-variant)] text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <Lock className="w-3 h-3" />
+              <Lock className="w-3.5 h-3.5" />
               <span>
                 {wakeLockActive
-                  ? 'Wake Lock: ON'
+                  ? 'Wake Lock On'
                   : wakeLockSupported
                   ? 'Wake Lock'
                   : 'Keep Awake'}
@@ -200,271 +200,266 @@ export const ProtocolTelemetryPanel: React.FC<ProtocolTelemetryPanelProps> = ({
             <button
               type="button"
               onClick={onResetSession}
-              className="min-h-[30px] px-2.5 py-1 text-[11px] font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded flex items-center gap-1 cursor-pointer"
+              className="min-h-[32px] px-3 py-1 text-xs font-medium border border-[var(--m3-outline-variant)] text-zinc-400 hover:text-zinc-200 rounded-full flex items-center gap-1.5 cursor-pointer"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset</span>
             </button>
           </div>
         </div>
 
         {/* Role Selector */}
-        <div
-          role="group"
-          aria-label="Select Device Role"
-          className="grid grid-cols-2 gap-1.5 p-1 m3-surface-low rounded"
-        >
-          <button
-            type="button"
-            onClick={() => onSelectRole('SENDER')}
-            aria-pressed={isSender}
-            className={`min-h-[32px] px-3 py-1 text-xs font-semibold rounded cursor-pointer ${
-              isSender ? 'm3-btn-filled shadow-xs' : 'm3-text-muted'
-            }`}
+        <div className="p-4 flex flex-col gap-3">
+          <div
+            role="group"
+            aria-label="Select Device Role"
+            className="grid grid-cols-2 gap-1.5 p-1 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] rounded-full"
           >
-            Sender (Transmit File)
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectRole('RECEIVER')}
-            aria-pressed={!isSender}
-            className={`min-h-[32px] px-3 py-1 text-xs font-semibold rounded cursor-pointer ${
-              !isSender ? 'm3-btn-filled shadow-xs' : 'm3-text-muted'
-            }`}
-          >
-            Receiver (Scan &amp; Assemble)
-          </button>
-        </div>
-
-        {/* Sender File Selection (Strictly only displayed when role === 'SENDER') */}
-        {isSender && (
-          <>
-            <div
-              data-testid="file-drop-zone"
-              role="button"
-              tabIndex={0}
-              aria-label="Drop file here or click to select file for QR transfer"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDraggingOver(true);
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setIsDraggingOver(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setIsDraggingOver(false);
-              }}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
-              className={`border border-dashed p-2.5 rounded flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                isDraggingOver
-                  ? 'border-[var(--m3-primary)] m3-btn-tonal'
-                  : 'border-[var(--m3-outline)] m3-surface-low'
+            <button
+              type="button"
+              onClick={() => onSelectRole('SENDER')}
+              aria-pressed={isSender}
+              className={`min-h-[34px] px-3 py-1 text-xs font-semibold rounded-full cursor-pointer transition-colors ${
+                isSender ? 'm3-btn-filled shadow-xs' : 'm3-text-muted hover:text-white'
               }`}
             >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded bg-[var(--m3-primary)] text-[var(--m3-on-primary)] flex items-center justify-center shrink-0">
-                  <FileUp className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold truncate">
-                    {activeFile ? activeFile.name : 'Select file to transmit'}
+              Sender (Transmit File)
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectRole('RECEIVER')}
+              aria-pressed={!isSender}
+              className={`min-h-[34px] px-3 py-1 text-xs font-semibold rounded-full cursor-pointer transition-colors ${
+                !isSender ? 'm3-btn-filled shadow-xs' : 'm3-text-muted hover:text-white'
+              }`}
+            >
+              Receiver (Scan &amp; Assemble)
+            </button>
+          </div>
+
+          {/* Sender File Selection (Strictly only displayed when role === 'SENDER') */}
+          {isSender && (
+            <>
+              <div
+                data-testid="file-drop-zone"
+                role="button"
+                tabIndex={0}
+                aria-label="Drop file here or click to select file for QR transfer"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingOver(true);
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setIsDraggingOver(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDraggingOver(false);
+                }}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                style={{ borderRadius: 'var(--m3-radius-md)' }}
+                className={`border border-dashed px-4 py-3 flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                  isDraggingOver
+                    ? 'border-[var(--m3-primary)] m3-btn-tonal'
+                    : 'border-[var(--m3-outline)] bg-[var(--m3-surface-container-low)]'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] flex items-center justify-center shrink-0">
+                    <FileUp className="w-4 h-4" />
                   </div>
-                  <div className="text-[10px] font-mono m3-text-muted truncate">
-                    {activeFile
-                      ? `${activeFile.size} B · ${activeFile.totalChunks} QR frames · CRC ${activeFile.fileHash.slice(
-                          0,
-                          8
-                        )}`
-                      : 'Drop any file or click to browse'}
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold truncate">
+                      {activeFile ? activeFile.name : 'Select file to transmit'}
+                    </div>
+                    <div className="text-[11px] font-mono m3-text-muted truncate tabular-nums">
+                      {activeFile
+                        ? `${activeFile.size} B · ${activeFile.totalChunks} QR frames · CRC ${activeFile.fileHash.slice(
+                            0,
+                            8
+                          )}`
+                        : 'Drop any file or click to browse'}
+                    </div>
                   </div>
                 </div>
+
+                <span className="min-h-[30px] px-3 py-1 text-xs font-semibold m3-btn-tonal rounded-full shrink-0 flex items-center">
+                  Choose File
+                </span>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  aria-label="Choose File Input"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                />
               </div>
 
-              <span className="min-h-[28px] px-2.5 py-1 text-[11px] font-semibold m3-btn-filled rounded shrink-0 flex items-center">
-                Choose File
-              </span>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                aria-label="Choose File Input"
-                onChange={handleFileInputChange}
-                className="hidden"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-slate-400">Samples:</span>
-                <button
-                  type="button"
-                  onClick={() => onLoadPresetFile('TELEMETRY')}
-                  className="px-2 py-0.5 rounded m3-surface-low border border-[var(--m3-outline-variant)] cursor-pointer"
-                >
-                  telemetry.json
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onLoadPresetFile('SPEC')}
-                  className="px-2 py-0.5 rounded m3-surface-low border border-[var(--m3-outline-variant)] cursor-pointer"
-                >
-                  protocol.txt
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onLoadPresetFile('SVG')}
-                  className="px-2 py-0.5 rounded m3-surface-low border border-[var(--m3-outline-variant)] cursor-pointer"
-                >
-                  reticle.svg
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <span className="text-slate-400">Chunk:</span>
-                {[250, 350, 500].map((size) => (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-[11px] m3-text-muted">Samples:</span>
                   <button
-                    key={size}
                     type="button"
-                    onClick={() => onChangeChunkSize(size)}
-                    className={`px-1.5 py-0.5 rounded cursor-pointer border ${
-                      chunkSize === size
-                        ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
-                        : 'm3-surface-low border-[var(--m3-outline-variant)] text-slate-400'
-                    }`}
+                    onClick={() => onLoadPresetFile('TELEMETRY')}
+                    className="text-[11px] font-mono text-zinc-400 hover:text-[var(--m3-primary)] cursor-pointer"
                   >
-                    {size}B
+                    telemetry.json
                   </button>
-                ))}
-                <span className="text-slate-400 ml-1">Scan:</span>
-                {[50, 75, 100].map((ms) => (
+                  <span className="text-zinc-700">·</span>
                   <button
-                    key={ms}
                     type="button"
-                    onClick={() => onChangeScanInterval(ms)}
-                    className={`px-1.5 py-0.5 rounded cursor-pointer border ${
-                      scanIntervalMs === ms
-                        ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
-                        : 'm3-surface-low border-[var(--m3-outline-variant)] text-slate-400'
-                    }`}
+                    onClick={() => onLoadPresetFile('SPEC')}
+                    className="text-[11px] font-mono text-zinc-400 hover:text-[var(--m3-primary)] cursor-pointer"
                   >
-                    {ms}ms
+                    protocol.txt
                   </button>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+                  <span className="text-zinc-700">·</span>
+                  <button
+                    type="button"
+                    onClick={() => onLoadPresetFile('SVG')}
+                    className="text-[11px] font-mono text-zinc-400 hover:text-[var(--m3-primary)] cursor-pointer"
+                  >
+                    reticle.svg
+                  </button>
+                </div>
 
-      {/* Live ARQ Telemetry & Loopback Bar */}
-      <div className="m3-surface-card p-3 flex flex-col gap-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider">
-            ARQ Link Telemetry
-          </span>
-          <span className="text-[11px] font-mono m3-text-muted">
-            PHASE: {isSender ? senderState.phase : receiverState.phase}
-          </span>
+                <div className="flex items-center gap-1.5 font-mono text-[11px] tabular-nums">
+                  <span className="font-sans m3-text-muted">Chunk:</span>
+                  {[250, 350, 500].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => onChangeChunkSize(size)}
+                      className={`px-2 py-0.5 rounded-full cursor-pointer ${
+                        chunkSize === size
+                          ? 'bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {size}B
+                    </button>
+                  ))}
+                  <span className="font-sans m3-text-muted ml-1">Scan:</span>
+                  {[50, 75, 100].map((ms) => (
+                    <button
+                      key={ms}
+                      type="button"
+                      onClick={() => onChangeScanInterval(ms)}
+                      className={`px-2 py-0.5 rounded-full cursor-pointer ${
+                        scanIntervalMs === ms
+                          ? 'bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {ms}ms
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
-        <div
-          role="status"
-          aria-live="polite"
-          className="px-3 py-2 m3-surface-high text-[11px] font-mono flex items-center justify-between gap-2 rounded"
-        >
-          <span className="truncate">{statusMessage}</span>
-          <span className="font-bold whitespace-nowrap shrink-0">
-            {statusLabelPrefix}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="m3-surface-low p-2 rounded">
-            <div className="text-[10px] font-mono m3-text-muted">VERIFIED</div>
+        {/* Hairline 4-Column ARQ Telemetry Ribbon */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)]/40 font-mono tabular-nums">
+          <div className="px-4 py-3">
+            <div className="text-[11px] font-sans m3-text-muted">Verified</div>
             <div
               data-testid="metric-chunks"
-              className="text-base font-mono font-bold tabular-nums"
+              className="text-sm font-semibold mt-0.5"
             >
               {completedChunks} / {totalChunks}
             </div>
           </div>
-          <div className="m3-surface-low p-2 rounded">
-            <div className="text-[10px] font-mono m3-text-muted">THROUGHPUT</div>
+          <div className="px-4 py-3">
+            <div className="text-[11px] font-sans m3-text-muted">Throughput</div>
             <div
               data-testid="metric-speed"
-              className="text-base font-mono font-bold tabular-nums"
+              className="text-sm font-semibold mt-0.5 text-[var(--m3-primary)]"
             >
-              {metrics.speedKBps.toFixed(2)}{' '}
-              <span className="text-[10px] m3-text-muted">KB/s</span>
+              {metrics.speedKBps.toFixed(2)} KB/s
             </div>
           </div>
-          <div className="m3-surface-low p-2 rounded">
-            <div className="text-[10px] font-mono m3-text-muted">CRC RESENDS</div>
+          <div className="px-4 py-3">
+            <div className="text-[11px] font-sans m3-text-muted">CRC Resends</div>
             <div
               data-testid="metric-errors"
-              className="text-base font-mono font-bold tabular-nums"
+              className="text-sm font-semibold mt-0.5"
             >
               {errorCount}
             </div>
           </div>
-          <div className="m3-surface-low p-2 rounded">
-            <div className="text-[10px] font-mono m3-text-muted">ELAPSED</div>
-            <div className="text-base font-mono font-bold tabular-nums">
+          <div className="px-4 py-3">
+            <div className="text-[11px] font-sans m3-text-muted">Elapsed</div>
+            <div className="text-sm font-semibold mt-0.5">
               {metrics.elapsedSeconds.toFixed(1)}s
             </div>
           </div>
         </div>
 
-        {/* Loopback Test Actions */}
-        <div className="pt-2 border-t border-[var(--m3-outline-variant)] flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onToggleLoopback}
-            className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled rounded flex items-center gap-1.5 cursor-pointer"
+        {/* Status & Loopback Test Actions */}
+        <div className="px-5 py-3.5 flex flex-col gap-3">
+          <div
+            role="status"
+            aria-live="polite"
+            className="text-[11px] font-mono flex items-center justify-between gap-2"
           >
-            <Play className="w-3 h-3" />
-            <span>
-              {loopbackRunning ? 'Pause Loopback' : 'Auto-Stream Loopback'}
+            <span className="truncate m3-text-muted">{statusMessage}</span>
+            <span className="font-semibold text-[var(--m3-primary)] whitespace-nowrap shrink-0">
+              {statusLabelPrefix}
             </span>
-          </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={onStepLoopback}
-            className="min-h-[32px] px-2.5 py-1 text-xs font-medium m3-btn-tonal rounded flex items-center gap-1 cursor-pointer"
-          >
-            <StepForward className="w-3 h-3" />
-            <span>Step Frame</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onInjectCrcError}
-            className="min-h-[32px] px-2.5 py-1 text-xs font-medium m3-btn-outlined rounded flex items-center gap-1 cursor-pointer"
-          >
-            <ShieldAlert className="w-3 h-3" />
-            <span>Inject Bad CRC</span>
-          </button>
-
-          {!isSender && receiverState.assembledBytes && (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={onDownloadReceivedFile}
-              className="min-h-[32px] px-3 py-1 text-xs font-semibold m3-btn-filled rounded flex items-center gap-1.5 cursor-pointer"
+              onClick={onToggleLoopback}
+              className="min-h-[34px] px-3.5 py-1 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
             >
-              <Download className="w-3 h-3" />
-              <span>Save ({receiverState.metadata?.name})</span>
+              <Play className="w-3.5 h-3.5" />
+              <span>
+                {loopbackRunning ? 'Pause Loopback' : 'Auto-Stream Loopback'}
+              </span>
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={onStepLoopback}
+              className="min-h-[34px] px-3 py-1 text-xs font-medium m3-btn-tonal rounded-full flex items-center gap-1.5 cursor-pointer"
+            >
+              <StepForward className="w-3.5 h-3.5" />
+              <span>Step Frame</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onInjectCrcError}
+              className="min-h-[34px] px-3 py-1 text-xs font-medium border border-[var(--m3-outline-variant)] text-zinc-300 rounded-full flex items-center gap-1.5 cursor-pointer"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>Inject Bad CRC</span>
+            </button>
+
+            {!isSender && receiverState.assembledBytes && (
+              <button
+                type="button"
+                onClick={onDownloadReceivedFile}
+                className="min-h-[34px] px-3.5 py-1 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Save ({receiverState.metadata?.name})</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -488,19 +483,19 @@ export const ProtocolTelemetryPanel: React.FC<ProtocolTelemetryPanelProps> = ({
       )}
 
       {/* Active Packet JSON & Exchange Log */}
-      <div className="m3-surface-card p-3 flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider">
+      <div className="m3-surface-card overflow-hidden flex flex-col divide-y divide-[var(--m3-outline-variant)]">
+        <div className="px-5 py-3 flex items-center justify-between">
+          <span className="text-xs font-semibold">
             Frame JSON &amp; Exchange Log
           </span>
           <span className="text-[11px] font-mono m3-text-muted">
-            {activePacket ? `ACTIVE: ${activePacket.type}` : 'IDLE'}
+            {activePacket ? `Active: ${activePacket.type}` : 'Idle'}
           </span>
         </div>
 
         <pre
           data-testid="active-packet-json"
-          className="m3-surface-low p-2 text-[11px] font-mono overflow-x-auto max-h-28 rounded"
+          className="bg-[var(--m3-surface-container-low)]/50 px-5 py-3 text-[11px] font-mono overflow-x-auto max-h-28"
         >
           {activePacket
             ? JSON.stringify(activePacket, null, 2)
@@ -514,16 +509,16 @@ export const ProtocolTelemetryPanel: React.FC<ProtocolTelemetryPanelProps> = ({
               })}
         </pre>
 
-        <div className="m3-surface-low divide-y divide-[var(--m3-outline-variant)] max-h-36 overflow-y-auto rounded">
+        <div className="divide-y divide-[var(--m3-outline-variant)] max-h-36 overflow-y-auto">
           {frameLogs.length === 0 ? (
-            <div className="p-2.5 text-[11px] font-mono m3-text-muted">
+            <div className="px-5 py-3 text-[11px] font-mono m3-text-muted">
               No frames exchanged yet.
             </div>
           ) : (
             frameLogs.map((entry) => (
               <div
                 key={entry.id}
-                className="px-2.5 py-1.5 text-[11px] font-mono flex items-center justify-between gap-2"
+                className="px-5 py-2 text-[11px] font-mono flex items-center justify-between gap-2 tabular-nums"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="m3-text-muted shrink-0">{entry.timestamp}</span>

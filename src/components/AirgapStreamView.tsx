@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Square,
   SwitchCamera,
-  Zap,
 } from 'lucide-react';
 import {
   AirgapScannerState,
@@ -356,9 +355,6 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   }, [stopCamera]);
 
   // ULTRA-FAST 60 FPS Camera QR Scanning Pipeline
-  // - Uses requestAnimationFrame gated on fresh video.currentTime frames
-  // - Uses hardware BarcodeDetector directly on <video> when supported
-  // - Uses a fixed 360x360 center-cropped offscreen canvas (never re-allocated per frame!) + dontInvert fast path
   useEffect(() => {
     if (!cameraActive || !scannerState.isReceiving) return;
 
@@ -404,7 +400,6 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       const video = videoRef.current;
       if (!video || video.readyState < 2) return;
 
-      // Only decode when the camera hardware provides a new video frame
       const currentVideoTime = video.currentTime;
       if (currentVideoTime === lastVideoTime) return;
       lastVideoTime = currentVideoTime;
@@ -431,7 +426,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
           }
         }
 
-        // Fast Path 2: Center-cropped 360x360 downscaled jsQR (4x fewer pixels than 720x720 = ~3ms decode)
+        // Fast Path 2: Center-cropped 360x360 downscaled jsQR
         if (canvas && ctx) {
           const vw = video.videoWidth || 480;
           const vh = video.videoHeight || 480;
@@ -442,7 +437,6 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
           ctx.drawImage(video, sx, sy, minDim, minDim, 0, 0, SCAN_SIZE, SCAN_SIZE);
           const imageData = ctx.getImageData(0, 0, SCAN_SIZE, SCAN_SIZE);
 
-          // Use 'dontInvert' 7 out of 8 frames (2x faster since our QR pad is always black-on-white)
           const invMode = frameCounter % 8 === 0 ? 'attemptBoth' : 'dontInvert';
           const code = jsQR(imageData.data, SCAN_SIZE, SCAN_SIZE, {
             inversionAttempts: invMode,
@@ -510,344 +504,407 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     }
   };
 
-  // Reusable Generator QR Stage
-  const renderGeneratorQrStage = () => (
-    <div className="m3-surface-card p-4 flex flex-col gap-3">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider">
-            Optical QR Emitter
-          </span>
+  // Left Pane of Generator Console: Optical Emitter Stage
+  const renderGeneratorQrStage = (embedded = false) => (
+    <div
+      className={
+        embedded
+          ? 'flex flex-col justify-between h-full'
+          : 'm3-surface-card overflow-hidden flex flex-col justify-between'
+      }
+    >
+      {/* Top Bar — Zero pill badges, clean status dot + tabular frame counter */}
+      <div className="px-5 py-3.5 border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
           <span
-            className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase ${
-              isTransferring
-                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60'
-                : 'bg-[var(--m3-surface-container-high)] text-slate-300'
+            className={`w-2 h-2 rounded-full ${
+              isTransferring ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
             }`}
-          >
-            {isTransferring ? '● STREAMING' : 'STANDBY'}
-          </span>
+          />
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">
+              Optical Transmitter
+            </h2>
+            <p className="text-[11px] m3-text-muted">
+              {isTransferring
+                ? `Broadcasting at ${Math.round(1000 / frameDelayMs)} Hz`
+                : 'Standby · High-contrast ECC-L projection'}
+            </p>
+          </div>
         </div>
-        <span className="text-[11px] font-mono font-bold text-[var(--m3-primary)]">
-          {currentChunkIndex === -1
-            ? 'FRAME 0 (META)'
-            : `CHUNK #${currentChunkIndex.toString().padStart(2, '0')} (${
-                currentChunkIndex + 1
-              }/${preparedTransfer.totalChunks})`}
-        </span>
-      </div>
 
-      {/* High-Contrast QR Canvas Pad with Smooth Material You Corners */}
-      <div
-        style={{ borderRadius: 'var(--m3-radius-md)' }}
-        className="flex flex-col items-center justify-center p-3.5 bg-white text-slate-900 border border-slate-300 shadow-sm"
-      >
-        <canvas
-          ref={generatorCanvasRef}
-          id="qrcode"
-          style={{ transform: flipQr ? 'scaleX(-1)' : 'none' }}
-          className="max-w-full h-auto block rounded-xl"
-        />
-        <div className="mt-2 w-full flex items-center justify-between px-2 pt-1.5 border-t border-slate-200 text-[10px] font-mono text-slate-600">
-          <span className="truncate max-w-[200px]">{preparedTransfer.name}</span>
-          <span>
+        <div className="text-right font-mono tabular-nums">
+          <div className="text-xs font-semibold text-[var(--m3-primary)]">
             {currentChunkIndex === -1
-              ? `${preparedTransfer.metadataJson.length} B · ECC-L`
-              : `${currentQrText.length} B · ECC-L`}
-          </span>
+              ? 'Frame 0 · Meta'
+              : `Chunk #${currentChunkIndex.toString().padStart(2, '0')} / ${(
+                  preparedTransfer.totalChunks - 1
+                )
+                  .toString()
+                  .padStart(2, '0')}`}
+          </div>
+          <div className="text-[11px] m3-text-muted">
+            {currentChunkIndex === -1
+              ? `${preparedTransfer.metadataJson.length} B`
+              : `${currentQrText.length} B`}{' '}
+            · {Math.round(1000 / frameDelayMs)} FPS
+          </div>
         </div>
       </div>
 
-      {/* Frame Scrubber Bar */}
-      <div className="flex items-center gap-2 px-1">
-        <button
-          type="button"
-          title="Previous Frame"
-          onClick={() =>
-            handleSelectGeneratorFrame(Math.max(-1, currentChunkIndex - 1))
-          }
-          className="p-1.5 rounded-full m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
-        <input
-          type="range"
-          aria-label="Scrub Optical QR Frame"
-          min={-1}
-          max={Math.max(0, preparedTransfer.totalChunks - 1)}
-          value={currentChunkIndex}
-          onChange={(e) => handleSelectGeneratorFrame(Number(e.target.value))}
-          className="flex-1 accent-[var(--m3-primary)] cursor-pointer h-1.5"
-        />
-        <button
-          type="button"
-          title="Next Frame"
-          onClick={() =>
-            handleSelectGeneratorFrame(
-              Math.min(preparedTransfer.totalChunks - 1, currentChunkIndex + 1)
-            )
-          }
-          className="p-1.5 rounded-full m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-        >
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      {/* Center Stage — Futuristic Precision Optical Mount + High-Contrast QR Pad */}
+      <div className="relative p-6 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--m3-primary)_14%,transparent)_0%,transparent_72%)]">
+        <div className="relative p-3">
+          {/* Precision Corner Fiducial Brackets */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[var(--m3-primary)]/70 rounded-tl-md"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[var(--m3-primary)]/70 rounded-tr-md"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[var(--m3-primary)]/70 rounded-bl-md"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[var(--m3-primary)]/70 rounded-br-md"
+          />
 
-      {/* Primary Transport & Speed Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          {!isTransferring ? (
-            <button
-              type="button"
-              onClick={() => setIsTransferring(true)}
-              className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Start Transfer</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setIsTransferring(false);
-                setSenderUserMessage('Transmission paused');
-              }}
-              className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal rounded-full flex items-center gap-1.5 cursor-pointer"
-            >
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span>Stop Transfer</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setLoopStream((l) => !l)}
-            className={`min-h-[36px] px-3 py-1.5 text-[11px] font-mono rounded-full border cursor-pointer flex items-center gap-1 ${
-              loopStream
-                ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)] font-bold'
-                : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
+          <div
+            style={{ borderRadius: 'var(--m3-radius-md)' }}
+            className={`p-4 bg-white text-zinc-950 flex flex-col items-center transition-shadow duration-300 ${
+              isTransferring
+                ? 'shadow-[0_0_42px_-6px_color-mix(in_srgb,var(--m3-primary)_50%,transparent)]'
+                : 'shadow-[0_16px_40px_-12px_rgba(0,0,0,0.7)]'
             }`}
           >
-            <Repeat className="w-3 h-3" />
-            <span>Loop: {loopStream ? 'ON' : 'OFF'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFlipQr((f) => !f)}
-            className={`min-h-[36px] px-3 py-1.5 text-[11px] font-mono rounded-full border cursor-pointer flex items-center gap-1 ${
-              flipQr
-                ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] border-[var(--m3-primary)]'
-                : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)]'
-            }`}
-          >
-            <FlipHorizontal className="w-3 h-3" />
-            <span>Flip</span>
-          </button>
+            <canvas
+              ref={generatorCanvasRef}
+              id="qrcode"
+              style={{ transform: flipQr ? 'scaleX(-1)' : 'none' }}
+              className="max-w-full h-auto block"
+            />
+            <div className="mt-2.5 pt-2 border-t border-zinc-200 w-full flex items-center justify-between text-[11px] font-mono text-zinc-600 tabular-nums">
+              <span className="truncate max-w-[180px] font-medium text-zinc-800">
+                {preparedTransfer.name}
+              </span>
+              <span>
+                {currentChunkIndex === -1
+                  ? 'INIT HEADER'
+                  : `FRAME ${currentChunkIndex + 1} OF ${preparedTransfer.totalChunks}`}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="inline-flex rounded-full p-1 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[10px] font-mono gap-0.5">
-          {[35, 60, 90, 140].map((delay) => (
+        {/* Minimalist Scrubber */}
+        <div className="mt-4 w-full max-w-[300px] flex items-center gap-2">
+          <button
+            type="button"
+            title="Previous Frame"
+            onClick={() =>
+              handleSelectGeneratorFrame(Math.max(-1, currentChunkIndex - 1))
+            }
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-[var(--m3-on-surface)] hover:bg-[var(--m3-surface-container-high)] transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <input
+            type="range"
+            aria-label="Scrub Optical QR Frame"
+            min={-1}
+            max={Math.max(0, preparedTransfer.totalChunks - 1)}
+            value={currentChunkIndex}
+            onChange={(e) => handleSelectGeneratorFrame(Number(e.target.value))}
+            className="flex-1 accent-[var(--m3-primary)] cursor-pointer h-1"
+          />
+          <button
+            type="button"
+            title="Next Frame"
+            onClick={() =>
+              handleSelectGeneratorFrame(
+                Math.min(preparedTransfer.totalChunks - 1, currentChunkIndex + 1)
+              )
+            }
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-[var(--m3-on-surface)] hover:bg-[var(--m3-surface-container-high)] transition-colors cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Transport & Cadence Control Strip */}
+      <div className="px-5 py-3.5 border-t border-[var(--m3-outline-variant)] flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {!isTransferring ? (
+              <button
+                type="button"
+                onClick={() => setIsTransferring(true)}
+                className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Start Transfer</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTransferring(false);
+                  setSenderUserMessage('Transmission paused');
+                }}
+                className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal rounded-full flex items-center gap-1.5 cursor-pointer"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>Stop Transfer</span>
+              </button>
+            )}
+
             <button
-              key={delay}
               type="button"
-              onClick={() => setFrameDelayMs(delay)}
-              className={`px-2 py-0.5 rounded-full cursor-pointer ${
-                frameDelayMs === delay
-                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] font-bold'
-                  : 'text-slate-400 hover:text-white'
+              onClick={() => setLoopStream((l) => !l)}
+              className={`min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-full border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                loopStream
+                  ? 'border-[var(--m3-outline)] text-[var(--m3-on-surface)] bg-[var(--m3-surface-container-high)]'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              {delay}ms
+              <Repeat className="w-3.5 h-3.5" />
+              <span>Loop {loopStream ? 'On' : 'Off'}</span>
             </button>
-          ))}
-        </div>
-      </div>
 
-      {/* Status Line */}
-      <div className="px-3.5 py-2 rounded-full bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]">
-        <span className="truncate text-slate-300">{senderUserMessage}</span>
-        <span className="text-[10px] text-[var(--m3-primary)] font-semibold shrink-0 ml-2">
-          {Math.round(1000 / frameDelayMs)} FPS
-        </span>
+            <button
+              type="button"
+              onClick={() => setFlipQr((f) => !f)}
+              className={`min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-full border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                flipQr
+                  ? 'border-[var(--m3-outline)] text-[var(--m3-on-surface)] bg-[var(--m3-surface-container-high)]'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <FlipHorizontal className="w-3.5 h-3.5" />
+              <span>Mirror</span>
+            </button>
+          </div>
+
+          <div className="inline-flex items-center rounded-full p-0.5 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[11px] font-mono tabular-nums">
+            {[35, 60, 90, 140].map((delay) => (
+              <button
+                key={delay}
+                type="button"
+                onClick={() => setFrameDelayMs(delay)}
+                className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                  frameDelayMs === delay
+                    ? 'bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {delay}ms
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] font-mono m3-text-muted pt-1 border-t border-[var(--m3-outline-variant)]/60">
+          <span className="truncate">{senderUserMessage}</span>
+          <span className="shrink-0 ml-2 text-zinc-400">
+            Zero local auto-download
+          </span>
+        </div>
       </div>
     </div>
   );
 
-  // Reusable Generator File Configuration & Outgoing Frame Queue
-  const renderGeneratorPayloadConfig = () => (
-    <div className="m3-surface-card p-4 flex flex-col gap-3.5">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
+  // Right Pane of Generator Console: Payload Ingestion, Hairline Telemetry & Frame Schedule
+  const renderGeneratorPayloadConfig = (embedded = false) => (
+    <div
+      className={
+        embedded
+          ? 'flex flex-col h-full'
+          : 'm3-surface-card overflow-hidden flex flex-col'
+      }
+    >
+      {/* Header */}
+      <div className="px-5 py-3.5 border-b border-[var(--m3-outline-variant)] flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider">
-            Source Payload &amp; Outgoing Frame Manifest
+          <h2 className="text-sm font-semibold tracking-tight">
+            Payload &amp; Frame Schedule
           </h2>
-          <p className="text-[11px] font-mono m3-text-muted">
-            Select a file to compress with Pako Gzip (Level 9) for optical transmission
+          <p className="text-[11px] m3-text-muted">
+            Deflate Gzip (Level 9) · Base64 optical packetization
           </p>
         </div>
 
-        <div className="inline-flex items-center gap-1 rounded-full p-1 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[10px] font-mono">
-          <span className="text-slate-400 pl-2 pr-1">Chunk:</span>
-          {[200, 250, 350].map((sz) => (
-            <button
-              key={sz}
-              type="button"
-              onClick={() => onChangeChunkSize(sz)}
-              className={`px-2.5 py-0.5 rounded-full font-mono cursor-pointer ${
-                chunkSize === sz
-                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {sz}B
-            </button>
-          ))}
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-[11px] m3-text-muted">Frame capacity:</span>
+          <div className="inline-flex rounded-full p-0.5 bg-[var(--m3-surface-container-low)] border border-[var(--m3-outline-variant)] text-[11px] font-mono tabular-nums">
+            {[200, 250, 350].map((sz) => (
+              <button
+                key={sz}
+                type="button"
+                onClick={() => onChangeChunkSize(sz)}
+                className={`px-2.5 py-1 rounded-full transition-colors cursor-pointer ${
+                  chunkSize === sz
+                    ? 'bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {sz}B
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Smooth Material You Drag-and-Drop Zone */}
-      <div
-        data-testid="file-drop-zone"
-        role="button"
-        tabIndex={0}
-        aria-label="Drop file here or click to select file for QR transfer"
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDraggingOver(true);
-        }}
-        onDragEnter={(e) => {
-          e.preventDefault();
-          setIsDraggingOver(true);
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          setIsDraggingOver(false);
-        }}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
+      {/* File Drop Zone & Quick Presets Row */}
+      <div className="p-5 border-b border-[var(--m3-outline-variant)] flex flex-col gap-3">
+        <div
+          data-testid="file-drop-zone"
+          role="button"
+          tabIndex={0}
+          aria-label="Drop file here or click to select file for QR transfer"
+          onDragOver={(e) => {
             e.preventDefault();
-            fileInputRef.current?.click();
-          }
-        }}
-        style={{ borderRadius: 'var(--m3-radius-md)' }}
-        className={`border-2 border-dashed p-3.5 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-          isDraggingOver
-            ? 'border-[var(--m3-primary)] bg-[var(--m3-surface-container-high)]'
-            : 'border-[var(--m3-outline)] m3-surface-low hover:border-[var(--m3-primary)]'
-        }`}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-2xl bg-[var(--m3-primary)] text-[var(--m3-on-primary)] flex items-center justify-center shrink-0">
-            <FileUp className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs font-semibold truncate">
-              {preparedTransfer.name}
-            </div>
-            <div className="text-[10px] font-mono m3-text-muted truncate">
-              Drop any file here or click to browse local filesystem (100% offline)
-            </div>
-          </div>
-        </div>
-
-        <span className="min-h-[34px] px-4 py-1 text-[11px] font-semibold m3-btn-filled rounded-full shrink-0 flex items-center">
-          Browse File
-        </span>
-        <input
-          ref={fileInputRef}
-          id="file_input"
-          type="file"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) {
-              onFileUpload(f);
-              e.target.value = '';
+            setIsDraggingOver(true);
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            setIsDraggingOver(false);
+          }}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              fileInputRef.current?.click();
             }
           }}
-          className="hidden"
-        />
-      </div>
+          style={{ borderRadius: 'var(--m3-radius-md)' }}
+          className={`border border-dashed px-4 py-3.5 flex items-center justify-between gap-4 cursor-pointer transition-all ${
+            isDraggingOver
+              ? 'border-[var(--m3-primary)] bg-[var(--m3-surface-container-high)] shadow-[0_0_24px_-6px_var(--m3-primary)]'
+              : 'border-[var(--m3-outline)] bg-[var(--m3-surface-container-low)]/80 hover:border-[var(--m3-primary)]'
+          }`}
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--m3-primary)]/15 text-[var(--m3-primary)] flex items-center justify-center shrink-0 border border-[var(--m3-primary)]/30">
+              <FileUp className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold truncate">
+                {preparedTransfer.name}
+              </div>
+              <div className="text-[11px] m3-text-muted truncate">
+                Drop any file here or click to browse local filesystem (100% air-gapped)
+              </div>
+            </div>
+          </div>
 
-      {/* 4-Cell Dense Compression Telemetry Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
-        <div className="m3-surface-low px-3 py-2 border border-[var(--m3-outline-variant)]">
-          <div className="text-[10px] text-slate-400">RAW BYTES</div>
-          <div className="font-bold text-sm mt-0.5">{preparedTransfer.originalSize} B</div>
+          <span className="min-h-[32px] px-3.5 py-1 text-xs font-semibold m3-btn-tonal rounded-full shrink-0 flex items-center">
+            Select File
+          </span>
+          <input
+            ref={fileInputRef}
+            id="file_input"
+            type="file"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                onFileUpload(f);
+                e.target.value = '';
+              }
+            }}
+            className="hidden"
+          />
         </div>
-        <div className="m3-surface-low px-3 py-2 border border-[var(--m3-outline-variant)]">
-          <div className="text-[10px] text-slate-400">GZIP (LVL 9)</div>
-          <div className="font-bold text-sm mt-0.5 text-[var(--m3-primary)]">
-            {preparedTransfer.compressedSize} B
+
+        {/* Clean Unboxed Sample Switcher */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[11px] m3-text-muted">Reference payloads:</span>
+            <button
+              type="button"
+              onClick={() => onLoadPresetFile('TELEMETRY')}
+              className="text-[11px] font-mono text-zinc-400 hover:text-[var(--m3-primary)] underline-offset-4 hover:underline cursor-pointer"
+            >
+              calibration-telemetry.json
+            </button>
+            <span className="text-zinc-700">·</span>
+            <button
+              type="button"
+              onClick={() => onLoadPresetFile('SPEC')}
+              className="text-[11px] font-mono text-zinc-400 hover:text-[var(--m3-primary)] underline-offset-4 hover:underline cursor-pointer"
+            >
+              optical-arq-protocol.txt
+            </button>
+            <span className="text-zinc-700">·</span>
+            <button
+              type="button"
+              onClick={() => onLoadPresetFile('SVG')}
+              className="text-[11px] font-mono text-zinc-400 hover:text-[var(--m3-primary)] underline-offset-4 hover:underline cursor-pointer"
+            >
+              reticle-diagram.svg
+            </button>
           </div>
         </div>
-        <div className="m3-surface-low px-3 py-2 border border-[var(--m3-outline-variant)]">
-          <div className="text-[10px] text-slate-400">COMPRESSION</div>
-          <div className="font-bold text-sm mt-0.5 text-emerald-400">
+      </div>
+
+      {/* 4-Column Hairline Telemetry Ribbon (Single-Elevation, Oversized Tabular Numerals) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[var(--m3-outline-variant)] border-b border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)]/50 font-mono tabular-nums">
+        <div className="px-5 py-3.5">
+          <div className="text-[11px] font-sans m3-text-muted">Source Size</div>
+          <div className="text-base font-semibold tracking-tight mt-0.5">
+            {preparedTransfer.originalSize.toLocaleString()} B
+          </div>
+        </div>
+        <div className="px-5 py-3.5">
+          <div className="text-[11px] font-sans m3-text-muted">Compressed (Gzip)</div>
+          <div className="text-base font-semibold tracking-tight mt-0.5 text-[var(--m3-primary)]">
+            {preparedTransfer.compressedSize.toLocaleString()} B
+          </div>
+        </div>
+        <div className="px-5 py-3.5">
+          <div className="text-[11px] font-sans m3-text-muted">Reduction</div>
+          <div className="text-base font-semibold tracking-tight mt-0.5 text-emerald-400">
             {preparedTransfer.compressionRatioPct > 0
               ? `-${preparedTransfer.compressionRatioPct}%`
               : '0%'}
           </div>
         </div>
-        <div className="m3-surface-low px-3 py-2 border border-[var(--m3-outline-variant)]">
-          <div className="text-[10px] text-slate-400">QR FRAMES</div>
-          <div className="font-bold text-sm mt-0.5">
+        <div className="px-5 py-3.5">
+          <div className="text-[11px] font-sans m3-text-muted">Optical Frames</div>
+          <div className="text-base font-semibold tracking-tight mt-0.5">
             {preparedTransfer.totalChunks} + 1 Meta
           </div>
         </div>
       </div>
 
-      {/* Quick Deterministic Presets */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] text-slate-400">Load Test Payload:</span>
-          <button
-            type="button"
-            onClick={() => onLoadPresetFile('TELEMETRY')}
-            className="px-3 py-1 rounded-full text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-          >
-            calibration-telemetry.json
-          </button>
-          <button
-            type="button"
-            onClick={() => onLoadPresetFile('SPEC')}
-            className="px-3 py-1 rounded-full text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-          >
-            optical-arq-protocol.txt
-          </button>
-          <button
-            type="button"
-            onClick={() => onLoadPresetFile('SVG')}
-            className="px-3 py-1 rounded-full text-[10px] m3-surface-low border border-[var(--m3-outline-variant)] hover:bg-[var(--m3-surface)] cursor-pointer"
-          >
-            reticle-diagram.svg
-          </button>
-        </div>
-      </div>
-
-      {/* Outgoing Transmitter Frame Selector (Click any row to project that frame) */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between text-[10px] font-mono m3-text-muted px-1">
-          <span>
-            OUTGOING TRANSMITTER FRAMES (CLICK ANY ROW TO PIN &amp; BROADCAST SINGLE CHUNK)
+      {/* Full-Bleed Frame Schedule Table */}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="px-5 py-2.5 border-b border-[var(--m3-outline-variant)] flex items-center justify-between text-xs">
+          <span className="font-medium text-zinc-300">
+            Outgoing Frame Schedule
           </span>
-          <span>{preparedTransfer.totalChunks + 1} frames ready</span>
+          <span className="text-[11px] m3-text-muted">
+            Select any row to pin &amp; broadcast frame
+          </span>
         </div>
 
-        <div
-          style={{ borderRadius: 'var(--m3-radius-md)' }}
-          className="max-h-48 overflow-y-auto border border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)]"
-        >
-          <table className="w-full text-left border-collapse text-[11px] font-mono">
+        <div className="max-h-60 overflow-y-auto">
+          <table className="w-full text-left border-collapse text-xs font-mono tabular-nums">
             <thead>
-              <tr className="border-b border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-high)] text-slate-400 text-[10px]">
-                <th className="py-1.5 px-3 w-24">Frame</th>
-                <th className="py-1.5 px-3 w-24">Type</th>
-                <th className="py-1.5 px-3 w-24">QR Chars</th>
-                <th className="py-1.5 px-3">Encoded Preview</th>
+              <tr className="border-b border-[var(--m3-outline-variant)] bg-[var(--m3-surface-container-low)] text-zinc-400 text-[11px] font-sans">
+                <th className="py-2 px-5 font-medium w-28">Frame</th>
+                <th className="py-2 px-3 font-medium w-28">Packet Type</th>
+                <th className="py-2 px-3 font-medium w-24">Length</th>
+                <th className="py-2 px-5 font-medium">Payload Preview</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--m3-outline-variant)]">
@@ -855,14 +912,14 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                 onClick={() => handleSelectGeneratorFrame(-1)}
                 className={`cursor-pointer transition-colors ${
                   currentChunkIndex === -1
-                    ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
-                    : 'hover:bg-[var(--m3-surface)]'
+                    ? 'bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold'
+                    : 'hover:bg-[var(--m3-surface-container-low)]'
                 }`}
               >
-                <td className="py-1.5 px-3">Frame 0</td>
-                <td className="py-1.5 px-3">METADATA</td>
-                <td className="py-1.5 px-3">{preparedTransfer.metadataJson.length} B</td>
-                <td className="py-1.5 px-3 truncate max-w-[220px] text-[10px] opacity-85">
+                <td className="py-2 px-5">Frame 00</td>
+                <td className="py-2 px-3">Metadata</td>
+                <td className="py-2 px-3">{preparedTransfer.metadataJson.length} B</td>
+                <td className="py-2 px-5 truncate max-w-[260px] text-[11px] opacity-80">
                   {preparedTransfer.metadataJson}
                 </td>
               </tr>
@@ -872,17 +929,17 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
                   onClick={() => handleSelectGeneratorFrame(idx)}
                   className={`cursor-pointer transition-colors ${
                     currentChunkIndex === idx
-                      ? 'bg-[var(--m3-primary-container)] text-[var(--m3-on-primary-container)] font-bold'
-                      : 'hover:bg-[var(--m3-surface)]'
+                      ? 'bg-[var(--m3-surface-container-high)] text-[var(--m3-primary)] font-semibold'
+                      : 'hover:bg-[var(--m3-surface-container-low)]'
                   }`}
                 >
-                  <td className="py-1.5 px-3">
+                  <td className="py-2 px-5">
                     Chunk #{idx.toString().padStart(2, '0')}
                   </td>
-                  <td className="py-1.5 px-3">GZIP DATA</td>
-                  <td className="py-1.5 px-3">{encoded.length} B</td>
-                  <td className="py-1.5 px-3 truncate max-w-[220px] text-[10px] opacity-80">
-                    {encoded.slice(0, 42)}...
+                  <td className="py-2 px-3">Gzip Data</td>
+                  <td className="py-2 px-3">{encoded.length} B</td>
+                  <td className="py-2 px-5 truncate max-w-[260px] text-[11px] opacity-75">
+                    {encoded.slice(0, 48)}...
                   </td>
                 </tr>
               ))}
@@ -893,206 +950,231 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     </div>
   );
 
-  // Reusable Scanner Camera Viewfinder Stage
-  const renderScannerCameraStage = () => (
-    <div className="m3-surface-card p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--m3-outline-variant)] pb-2.5">
-        <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <span>High-FPS Optical Receiver</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-700/50 inline-flex items-center gap-1">
-              <Zap className="w-2.5 h-2.5" /> 60Hz Engine
-            </span>
-          </h2>
-          <p className="text-[10px] font-mono m3-text-muted mt-0.5">
-            360x360 center-crop + hardware BarcodeDetector + O(1) duplicate skip
-          </p>
+  // Left Pane of Scanner Console: High-FPS Camera Viewfinder
+  const renderScannerCameraStage = (embedded = false) => (
+    <div
+      className={
+        embedded
+          ? 'flex flex-col justify-between h-full'
+          : 'm3-surface-card overflow-hidden flex flex-col justify-between'
+      }
+    >
+      {/* Header */}
+      <div className="px-5 py-3.5 border-b border-[var(--m3-outline-variant)] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              cameraActive ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
+            }`}
+          />
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">
+              60Hz Optical Receiver
+            </h2>
+            <p className="text-[11px] m3-text-muted">
+              360×360 ROI · Hardware BarcodeDetector · O(1) dedupe
+            </p>
+          </div>
         </div>
+
         <span
           data-testid="scanner-progress-text"
-          className="text-xs font-mono font-bold text-[var(--m3-primary)] whitespace-nowrap shrink-0"
+          className="text-xs font-mono font-semibold text-[var(--m3-primary)] tabular-nums whitespace-nowrap shrink-0"
         >
           {scannerState.receivedCount} / {scannerState.fileMetadata?.chunks || 0} Chunks
         </span>
       </div>
 
-      {/* Receiver Action Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          {!cameraActive ? (
-            <button
-              type="button"
-              onClick={() => startReceiverCamera(facingMode)}
-              className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>Start Receiver</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleStopReceiver}
-              className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal rounded-full flex items-center gap-1.5 cursor-pointer"
-            >
-              <CameraOff className="w-3.5 h-3.5" />
-              <span>Stop Receiver</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleToggleFacingMode}
-            className="min-h-[36px] px-3 py-1.5 text-[11px] font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-full cursor-pointer flex items-center gap-1.5"
-          >
-            <SwitchCamera className="w-3.5 h-3.5" />
-            <span>{facingMode === 'environment' ? 'Rear Cam' : 'Front Cam'}</span>
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            downloadedRef.current = false;
-            decodedIndicesRef.current.clear();
-            lastScannedRawRef.current = '';
-            setScannerState(createInitialAirgapScannerState());
-          }}
-          className="min-h-[36px] px-3 py-1.5 text-[11px] font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-full cursor-pointer flex items-center gap-1 text-slate-300 hover:text-white"
+      {/* Camera Sensor Stage with Futuristic HUD Reticle */}
+      <div className="p-5 flex flex-col gap-3 bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--m3-primary)_10%,transparent)_0%,transparent_75%)]">
+        <div
+          style={{ borderRadius: 'var(--m3-radius-md)' }}
+          className="w-full h-64 bg-[#050608] border border-[var(--m3-outline-variant)] overflow-hidden relative flex flex-col shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
         >
-          <RotateCcw className="w-3 h-3" />
-          <span>Clear Receiver</span>
-        </button>
-      </div>
-
-      {/* Camera Viewfinder Box with Smooth Material You Corners */}
-      <div
-        style={{ borderRadius: 'var(--m3-radius-md)' }}
-        className="w-full h-60 bg-[#03060f] border border-slate-800 overflow-hidden relative flex flex-col"
-      >
-        <div className="shrink-0 flex items-center justify-between px-3 py-1.5 text-[10px] font-mono text-slate-400 bg-slate-950/90 border-b border-slate-800">
-          <span>SENSOR ({facingMode.toUpperCase()}) · 360x360 FAST ROI</span>
-          <span className={cameraActive ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
-            {cameraActive
-              ? `● ${scanFps || 60} FPS (${decodeMs || 3.1}ms/frame)`
-              : 'STANDBY'}
-          </span>
-        </div>
-
-        <div className="relative flex-1 flex items-center justify-center p-2 overflow-hidden">
-          <video
-            ref={videoRef}
-            id="videoElement"
-            muted
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover"
-          />
-          <canvas ref={scanCanvasRef} className="hidden" />
-
-          {/* Target Reticle */}
-          <div className="absolute w-40 h-40 border-2 border-dashed border-cyan-400/80 rounded-2xl pointer-events-none flex items-center justify-center">
-            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping opacity-60" />
+          <div className="shrink-0 flex items-center justify-between px-3.5 py-2 text-[11px] font-mono text-zinc-400 bg-zinc-950/90 border-b border-zinc-800/80 tabular-nums">
+            <span>
+              Sensor ({facingMode === 'environment' ? 'Rear' : 'Front'}) · 360×360 ROI
+            </span>
+            <span className={cameraActive ? 'text-emerald-400 font-semibold' : 'text-zinc-500'}>
+              {cameraActive
+                ? `● ${scanFps || 60} FPS (${decodeMs || 3.1}ms)`
+                : 'Standby'}
+            </span>
           </div>
 
-          {!cameraActive && (
-            <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center p-4 text-center">
-              <p className="text-xs font-semibold text-slate-200">
-                60Hz Optical Viewfinder Ready
-              </p>
-              <p className="text-[11px] font-mono text-slate-400 mt-1 max-w-xs">
-                Click &ldquo;Start Receiver&rdquo; to activate zero-latency QR chunk capture.
-              </p>
+          <div className="relative flex-1 flex items-center justify-center p-2 overflow-hidden">
+            <video
+              ref={videoRef}
+              id="videoElement"
+              muted
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            <canvas ref={scanCanvasRef} className="hidden" />
+
+            {/* Futuristic Optical HUD Reticle with Corner Fiducials & Laser Scanline */}
+            <div className="absolute w-48 h-44 rounded-2xl border border-dashed border-[var(--m3-primary)]/40 pointer-events-none flex items-center justify-center z-20 overflow-hidden">
+              <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-[var(--m3-primary)] to-transparent animate-scanline" />
+              <span className="absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 border-[var(--m3-primary)] rounded-tl-sm" />
+              <span className="absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 border-[var(--m3-primary)] rounded-tr-sm" />
+              <span className="absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 border-[var(--m3-primary)] rounded-bl-sm" />
+              <span className="absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 border-[var(--m3-primary)] rounded-br-sm" />
+              {cameraActive && (
+                <div className="w-1.5 h-1.5 rounded-full bg-[var(--m3-primary)] shadow-[0_0_10px_var(--m3-primary)]" />
+              )}
+            </div>
+
+            {!cameraActive && (
+              <div className="absolute inset-0 bg-zinc-950/80 flex flex-col items-center justify-center p-5 text-center z-10">
+                <p className="text-xs font-semibold text-zinc-100 tracking-tight">
+                  Optical Viewfinder Standby
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-1 max-w-[168px] leading-relaxed">
+                  Align incoming QR stream inside the laser reticle
+                </p>
+              </div>
+            )}
+          </div>
+
+          {cameraError && (
+            <div className="shrink-0 bg-amber-950/90 border-t border-amber-500/40 px-3.5 py-2 text-[11px] font-mono text-amber-200">
+              {cameraError}
             </div>
           )}
         </div>
-
-        {cameraError && (
-          <div className="shrink-0 bg-amber-950/90 border-t border-amber-500/40 px-3 py-1.5 text-[10px] font-mono text-amber-200">
-            {cameraError}
-          </div>
-        )}
       </div>
 
-      {/* Receiver Status Bar */}
-      <div
-        role="status"
-        className="px-3.5 py-2 rounded-full bg-[var(--m3-surface-container-low)] text-[11px] font-mono flex items-center justify-between border border-[var(--m3-outline-variant)]"
-      >
-        <span className="truncate">{scannerState.userMessage}</span>
-        <span className="font-bold whitespace-nowrap shrink-0 ml-2 text-[var(--m3-primary)]">
-          {scannerState.isComplete
-            ? '✔ COMPLETE'
-            : scannerState.isReceiving
-            ? '● RECEIVING'
-            : 'IDLE'}
-        </span>
+      {/* Bottom Controls & Status Strip */}
+      <div className="px-5 py-3.5 border-t border-[var(--m3-outline-variant)] flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {!cameraActive ? (
+              <button
+                type="button"
+                onClick={() => startReceiverCamera(facingMode)}
+                className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Start Receiver</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStopReceiver}
+                className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-tonal rounded-full flex items-center gap-1.5 cursor-pointer"
+              >
+                <CameraOff className="w-3.5 h-3.5" />
+                <span>Stop Receiver</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleToggleFacingMode}
+              className="min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-full border border-[var(--m3-outline-variant)] text-zinc-300 hover:text-white cursor-pointer flex items-center gap-1.5"
+            >
+              <SwitchCamera className="w-3.5 h-3.5" />
+              <span>{facingMode === 'environment' ? 'Rear Camera' : 'Front Camera'}</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              downloadedRef.current = false;
+              decodedIndicesRef.current.clear();
+              lastScannedRawRef.current = '';
+              setScannerState(createInitialAirgapScannerState());
+            }}
+            className="min-h-[36px] px-3 py-1.5 text-xs font-medium rounded-full text-zinc-400 hover:text-white cursor-pointer flex items-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset</span>
+          </button>
+        </div>
+
+        <div
+          role="status"
+          className="flex items-center justify-between text-[11px] font-mono m3-text-muted pt-1 border-t border-[var(--m3-outline-variant)]/60"
+        >
+          <span className="truncate">{scannerState.userMessage}</span>
+          <span className="font-semibold whitespace-nowrap shrink-0 ml-2 text-[var(--m3-primary)]">
+            {scannerState.isComplete
+              ? '● Complete'
+              : scannerState.isReceiving
+              ? '● Receiving'
+              : 'Idle'}
+          </span>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-4">
       {/* Dual Testbed Loopback Bar (ONLY visible in Dual Testbed mode) */}
       {viewTab === 'DUAL' && (
-        <div className="m3-surface-card px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[var(--m3-primary)]">
-              SPLIT TESTBENCH:
-            </span>
-            <span className="text-slate-300 text-[11px]">
-              Generator &amp; Scanner are strictly isolated by default. Use loopback actions to test chunk decoding on one screen:
+        <div className="m3-surface-card px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-[var(--m3-primary)]" />
+            <span className="font-semibold">Loopback Verification Harness</span>
+            <span className="text-zinc-500 hidden sm:inline">·</span>
+            <span className="m3-text-muted text-[11px]">
+              Generator and Scanner remain strictly isolated unless you trigger a loopback pass:
             </span>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={handleSimulatePartialScan}
-              className="min-h-[30px] px-3 py-1 rounded-full text-[11px] font-mono bg-amber-950/60 text-amber-300 border border-amber-700/60 hover:bg-amber-900/60 cursor-pointer"
+              className="min-h-[32px] px-3.5 py-1 rounded-full text-xs font-medium border border-[var(--m3-outline)] text-zinc-200 hover:bg-[var(--m3-surface-container-high)] cursor-pointer"
             >
-              Simulate Partial Scan (Decoded + Undecoded)
+              Simulate Partial Scan
             </button>
             <button
               type="button"
               onClick={handleSimulateFullScan}
-              className="min-h-[30px] px-3 py-1 rounded-full text-[11px] font-mono bg-emerald-950/60 text-emerald-300 border border-emerald-700/60 hover:bg-emerald-900/60 cursor-pointer"
+              className="min-h-[32px] px-3.5 py-1 rounded-full text-xs font-medium border border-[var(--m3-outline)] text-zinc-200 hover:bg-[var(--m3-surface-container-high)] cursor-pointer"
             >
               Simulate Full Scan
             </button>
             <button
               type="button"
               onClick={() => setSimulationBridgeActive((s) => !s)}
-              className={`min-h-[30px] px-3 py-1 rounded-full text-[11px] font-mono border transition-colors cursor-pointer ${
+              className={`min-h-[32px] px-3.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
                 simulationBridgeActive
-                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-bold'
-                  : 'm3-surface-low text-slate-400 border-[var(--m3-outline-variant)] hover:text-white'
+                  ? 'bg-[var(--m3-primary)] text-[var(--m3-on-primary)] border-[var(--m3-primary)] font-semibold'
+                  : 'border-[var(--m3-outline-variant)] text-zinc-400 hover:text-white'
               }`}
             >
-              Live Stream Bridge: {simulationBridgeActive ? 'ON' : 'OFF'}
+              Live Stream Bridge: {simulationBridgeActive ? 'On' : 'Off'}
             </button>
           </div>
         </div>
       )}
 
-      {/* MODE 1: GENERATOR (SEND FILE) — Dense 2-Column Horizontal Workbench */}
+      {/* MODE 1: GENERATOR (SEND FILE) — Unified Single-Elevation Split Console */}
       {viewTab === 'GENERATOR' && (
         <div
           aria-label="Data Sender Mode (QR Generator)"
-          className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
+          className="m3-surface-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[var(--m3-outline-variant)]"
         >
-          <div className="lg:col-span-5">{renderGeneratorQrStage()}</div>
-          <div className="lg:col-span-7">{renderGeneratorPayloadConfig()}</div>
+          <div className="lg:col-span-5">{renderGeneratorQrStage(true)}</div>
+          <div className="lg:col-span-7">{renderGeneratorPayloadConfig(true)}</div>
         </div>
       )}
 
-      {/* MODE 2: SCANNER (RECEIVE FILE) — Dense 2-Column Horizontal Workbench */}
+      {/* MODE 2: SCANNER (RECEIVE FILE) — Unified Single-Elevation Split Console */}
       {viewTab === 'SCANNER' && (
         <div
           aria-label="Data Receiver Mode (QR Scanner)"
-          className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
+          className="m3-surface-card overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[var(--m3-outline-variant)]"
         >
-          <div className="lg:col-span-5">{renderScannerCameraStage()}</div>
+          <div className="lg:col-span-5">{renderScannerCameraStage(true)}</div>
           <div className="lg:col-span-7">
             <ChunksInspector
+              embedded
               fileMetadata={scannerState.fileMetadata}
               decodedChunks={scannerState.decodedChunks}
               receivedCount={scannerState.receivedCount}
@@ -1114,13 +1196,14 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       {/* MODE 3: DUAL TESTBED — Side-by-Side Generator (Left) + Scanner & Chunks Inspector (Right) */}
       {viewTab === 'DUAL' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          <div className="lg:col-span-5 flex flex-col gap-3.5">
-            {renderGeneratorQrStage()}
-            {renderGeneratorPayloadConfig()}
+          <div className="lg:col-span-5 m3-surface-card overflow-hidden divide-y divide-[var(--m3-outline-variant)]">
+            {renderGeneratorQrStage(true)}
+            {renderGeneratorPayloadConfig(true)}
           </div>
-          <div className="lg:col-span-7 flex flex-col gap-3.5">
-            {renderScannerCameraStage()}
+          <div className="lg:col-span-7 m3-surface-card overflow-hidden divide-y divide-[var(--m3-outline-variant)]">
+            {renderScannerCameraStage(true)}
             <ChunksInspector
+              embedded
               fileMetadata={scannerState.fileMetadata}
               decodedChunks={scannerState.decodedChunks}
               receivedCount={scannerState.receivedCount}
@@ -1141,3 +1224,4 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
     </div>
   );
 };
+

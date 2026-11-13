@@ -41,7 +41,7 @@ import {
 } from './utils/materialYouTheme';
 import { usePWAOfflineEngine } from './utils/usePWA';
 
-const THEME_STORAGE_KEY = 'optilink_m3_theme_v3';
+const THEME_STORAGE_KEY = 'optilink_m3_theme_v4';
 
 export type AppWorkspaceMode = 'GENERATOR' | 'SCANNER' | 'DUAL' | 'ARQ';
 
@@ -582,105 +582,106 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* High-Density Professional Top Navigation Header */}
+      {/* 3-Zone Futuristic Glass Top Bar */}
       <header
         style={{
-          backgroundColor: 'var(--m3-surface-container)',
+          backgroundColor: 'color-mix(in srgb, var(--m3-surface) 78%, transparent)',
           borderColor: 'var(--m3-outline-variant)',
         }}
-        className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b shrink-0"
+        className="sticky top-0 z-30 backdrop-blur-xl flex items-center justify-between gap-8 px-6 h-14 border-b shrink-0"
       >
-        {/* Brand & Offline status pill */}
-        <div className="flex items-center gap-2.5">
-          <a
-            href="#top"
-            className="text-base font-bold tracking-tight whitespace-nowrap"
+        {/* Zone 1: Geometric Optical Emblem + Wordmark */}
+        <a
+          href="#top"
+          className="flex items-center gap-2.5 text-base font-bold tracking-tight whitespace-nowrap shrink-0"
+        >
+          <span
+            aria-hidden="true"
+            className="w-6 h-6 rounded-lg bg-[var(--m3-primary)]/15 border border-[var(--m3-primary)]/40 flex items-center justify-center shadow-[0_0_14px_-2px_var(--m3-primary)]"
           >
-            OptiLink ARQ
-          </a>
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--m3-surface-container-high)] text-[var(--m3-on-surface-variant)] border border-[var(--m3-outline-variant)]">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                swReady ? 'bg-emerald-400' : 'bg-amber-400'
-              }`}
-            />
-            {swReady ? 'Offline Ready' : 'PWA Active'}
+            <span className="w-2 h-2 rounded-xs bg-[var(--m3-primary)]" />
           </span>
-        </div>
+          <span>OptiLink</span>
+        </a>
 
-        {/* Unified Primary Operational Mode Switcher */}
+        {/* Zone 2: Clean single-line text navigation links with luminous active indicator */}
         <nav
           aria-label="Primary Transceiver Mode"
-          className="inline-flex rounded-full p-1 m3-surface-low text-xs font-semibold gap-1"
+          className="flex items-center gap-7 h-full text-sm font-medium overflow-x-auto"
         >
           <button
             type="button"
             onClick={() => setWorkspaceMode('GENERATOR')}
-            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               workspaceMode === 'GENERATOR'
-                ? 'm3-btn-filled font-bold shadow-xs'
+                ? 'text-[var(--m3-on-surface)] font-semibold'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
             }`}
           >
-            <Play className="w-3.5 h-3.5" />
             <span>Generator</span>
+            {workspaceMode === 'GENERATOR' && (
+              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
+            )}
           </button>
           <button
             type="button"
             onClick={() => setWorkspaceMode('SCANNER')}
-            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               workspaceMode === 'SCANNER'
-                ? 'm3-btn-filled font-bold shadow-xs'
+                ? 'text-[var(--m3-on-surface)] font-semibold'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
             }`}
           >
-            <Camera className="w-3.5 h-3.5" />
             <span>Scanner</span>
+            {workspaceMode === 'SCANNER' && (
+              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
+            )}
           </button>
           <button
             type="button"
             onClick={() => setWorkspaceMode('DUAL')}
-            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               workspaceMode === 'DUAL'
-                ? 'm3-btn-filled font-bold shadow-xs'
+                ? 'text-[var(--m3-on-surface)] font-semibold'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
             }`}
           >
-            <Zap className="w-3.5 h-3.5" />
             <span>Dual Testbed</span>
+            {workspaceMode === 'DUAL' && (
+              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
+            )}
           </button>
           <button
             type="button"
             onClick={() => setWorkspaceMode('ARQ')}
-            className={`min-h-[34px] px-4 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               workspaceMode === 'ARQ'
-                ? 'm3-btn-filled font-bold shadow-xs'
+                ? 'text-[var(--m3-on-surface)] font-semibold'
                 : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
             }`}
           >
-            <Radio className="w-3.5 h-3.5" />
             <span>Optical ARQ</span>
+            {workspaceMode === 'ARQ' && (
+              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
+            )}
           </button>
-        </nav>
-
-        {/* Global Action Tools */}
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setMaterialModalOpen(true)}
-            title="Material You Settings"
-            className="min-h-[34px] px-3.5 py-1 text-xs font-mono m3-surface-low border border-[var(--m3-outline-variant)] rounded-full cursor-pointer flex items-center gap-1.5 hover:bg-[var(--m3-surface)]"
+            className="relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors m3-text-muted hover:text-[var(--m3-on-surface)]"
           >
-            <Palette className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Theme</span>
+            <span>Theme</span>
           </button>
+        </nav>
+
+        {/* Zone 3: Single Primary Action */}
+        <div className="flex items-center shrink-0">
           <button
             type="button"
             onClick={() => setStandaloneModalOpen(true)}
-            className="min-h-[34px] px-4 py-1 text-xs font-semibold m3-btn-filled rounded-full cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+            className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full cursor-pointer whitespace-nowrap shrink-0"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export Single-File</span>
+            Export Single-File
           </button>
         </div>
       </header>
@@ -688,7 +689,7 @@ export default function App() {
       {/* Main Responsive Workspace */}
       <main
         id="transceiver-workspace"
-        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-4 flex flex-col gap-4"
+        className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5"
       >
         {workspaceMode !== 'ARQ' ? (
           <AirgapStreamView

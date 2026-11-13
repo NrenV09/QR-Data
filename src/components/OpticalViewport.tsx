@@ -297,57 +297,63 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
       : 'border-slate-300';
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Viewport Mode & Optical Hardware Mirror Toolbar (Material You Styled) */}
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center justify-between gap-2 m3-surface-card p-2.5">
-        <button
-          type="button"
-          onClick={cameraActive ? stopCamera : startCamera}
-          className={`min-h-[42px] px-3 py-1.5 text-xs font-semibold flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
-            cameraActive ? 'm3-btn-tonal' : 'm3-btn-filled'
-          }`}
-        >
-          {cameraActive ? (
-            <>
-              <CameraOff className="w-3.5 h-3.5 shrink-0" />
-              <span>Stop Camera</span>
-            </>
-          ) : (
-            <>
-              <Camera className="w-3.5 h-3.5 shrink-0" />
-              <span>Selfie Camera</span>
-            </>
-          )}
-        </button>
+    <div className="m3-surface-card overflow-hidden flex flex-col divide-y divide-[var(--m3-outline-variant)]">
+      {/* Viewport Mode & Optical Hardware Mirror Toolbar */}
+      <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={cameraActive ? stopCamera : startCamera}
+            className={`min-h-[34px] px-3.5 py-1 text-xs font-semibold rounded-full flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+              cameraActive ? 'm3-btn-tonal' : 'm3-btn-filled'
+            }`}
+          >
+            {cameraActive ? (
+              <>
+                <CameraOff className="w-3.5 h-3.5 shrink-0" />
+                <span>Stop Camera</span>
+              </>
+            ) : (
+              <>
+                <Camera className="w-3.5 h-3.5 shrink-0" />
+                <span>Selfie Camera</span>
+              </>
+            )}
+          </button>
 
-        <button
-          type="button"
-          onClick={onToggleFlipQr}
-          aria-pressed={flipQr}
-          className={`min-h-[42px] px-3 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
-            flipQr ? 'm3-btn-tonal' : 'm3-btn-outlined'
-          }`}
-        >
-          <FlipHorizontal className="w-3.5 h-3.5 shrink-0" />
-          <span>Flip QR</span>
-        </button>
+          <button
+            type="button"
+            onClick={onToggleFlipQr}
+            aria-pressed={flipQr}
+            className={`min-h-[34px] px-3 py-1 text-xs font-medium rounded-full flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer border ${
+              flipQr
+                ? 'm3-btn-tonal border-transparent'
+                : 'border-[var(--m3-outline-variant)] text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FlipHorizontal className="w-3.5 h-3.5 shrink-0" />
+            <span>Flip QR</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={onToggleMirrorCamera}
-          aria-pressed={mirrorCamera}
-          className={`min-h-[42px] px-3 py-1.5 text-xs font-medium flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
-            mirrorCamera ? 'm3-btn-tonal' : 'm3-btn-outlined'
-          }`}
-        >
-          <FlipHorizontal2 className="w-3.5 h-3.5 shrink-0" />
-          <span>Mirror Camera</span>
-        </button>
+          <button
+            type="button"
+            onClick={onToggleMirrorCamera}
+            aria-pressed={mirrorCamera}
+            className={`min-h-[34px] px-3 py-1 text-xs font-medium rounded-full flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer border ${
+              mirrorCamera
+                ? 'm3-btn-tonal border-transparent'
+                : 'border-[var(--m3-outline-variant)] text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FlipHorizontal2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Mirror Camera</span>
+          </button>
+        </div>
 
         <button
           type="button"
           onClick={() => setPipMode((m) => (m === 'SPLIT' ? 'PIP' : 'SPLIT'))}
-          className="min-h-[42px] px-3 py-1.5 text-xs font-medium m3-btn-outlined flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+          className="min-h-[34px] px-3 py-1 text-xs font-medium rounded-full border border-[var(--m3-outline-variant)] text-zinc-400 hover:text-zinc-200 flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
         >
           {pipMode === 'SPLIT' ? (
             <>
@@ -364,7 +370,7 @@ export const OpticalViewport: React.FC<OpticalViewportProps> = ({
       </div>
 
       {/* Optical Alignment Container (Split-Screen or Picture-in-Picture) */}
-      <div className="relative flex flex-col gap-3">
+      <div className="relative p-4 flex flex-col gap-3 bg-[var(--m3-surface-container-low)]/40">
         {/* UPPER / DOMINANT HALF: High-Contrast Local QR Emitter (Always Pure White Pad for Optical Camera Scan) */}
         <div
           style={{ borderRadius: 'var(--m3-radius-lg)' }}
