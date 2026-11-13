@@ -3,7 +3,9 @@ import {
   Check,
   Copy,
   Download,
+  QrCode,
   Search,
+  Sparkles,
 } from 'lucide-react';
 
 interface ChunksInspectorProps {
@@ -13,6 +15,8 @@ interface ChunksInspectorProps {
   isComplete: boolean;
   reconstructedBytes: Uint8Array | null;
   onTriggerDownload?: () => void;
+  onSimulateSampleScan?: () => void;
+  onNotify?: (title: string, description?: string) => void;
   embedded?: boolean;
 }
 
@@ -32,6 +36,8 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
   isComplete,
   reconstructedBytes,
   onTriggerDownload,
+  onSimulateSampleScan,
+  onNotify,
   embedded = false,
 }) => {
   const [filter, setFilter] = useState<ChunkFilter>('ALL');
@@ -103,6 +109,7 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
       navigator.clipboard.writeText(text).catch(() => {});
     }
     setCopiedMissing(true);
+    onNotify?.('Copied Undecoded Chunk IDs', `${text} copied to clipboard`);
     window.setTimeout(() => setCopiedMissing(false), 1600);
   };
 
@@ -284,8 +291,28 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
             <div className="max-h-56 overflow-y-auto divide-y divide-[var(--m3-outline-variant)] text-xs font-mono tabular-nums">
               {totalChunks === 0 ? (
-                <div className="px-6 py-8 m3-text-muted font-sans text-xs leading-relaxed">
-                  No undecoded chunks queued yet. Point the receiver camera at the transmitting screen to index incoming frames.
+                <div className="px-6 py-7 flex flex-col items-start gap-2.5 font-sans">
+                  <div className="w-8 h-8 rounded-xl bg-[var(--m3-surface-container-high)] border border-[var(--m3-outline-variant)] flex items-center justify-center text-amber-400">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[var(--m3-on-surface)]">
+                      No Undecoded Chunks Queued
+                    </div>
+                    <p className="text-[11px] m3-text-muted leading-relaxed mt-0.5">
+                      Point the 60Hz receiver camera at the sender&apos;s QR stream to index incoming frames.
+                    </p>
+                  </div>
+                  {onSimulateSampleScan && (
+                    <button
+                      type="button"
+                      onClick={onSimulateSampleScan}
+                      className="mt-1 min-h-[28px] px-3 py-1 rounded-full text-[11px] font-medium m3-btn-tonal flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Preview Sample Chunk Split</span>
+                    </button>
+                  )}
                 </div>
               ) : undecodedList.length === 0 ? (
                 <div className="px-6 py-8 text-emerald-400 font-sans text-xs font-medium">
@@ -327,8 +354,18 @@ export const ChunksInspector: React.FC<ChunksInspectorProps> = ({
 
             <div className="max-h-56 overflow-y-auto divide-y divide-[var(--m3-outline-variant)] text-xs font-mono tabular-nums">
               {decodedList.length === 0 ? (
-                <div className="px-6 py-8 m3-text-muted font-sans text-xs leading-relaxed">
-                  0 chunks decoded so far. Verified frames appear here immediately upon optical capture.
+                <div className="px-6 py-7 flex flex-col items-start gap-2.5 font-sans">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400">
+                    <Check className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[var(--m3-on-surface)]">
+                      Awaiting Verified Chunks
+                    </div>
+                    <p className="text-[11px] m3-text-muted leading-relaxed mt-0.5">
+                      0 chunks decoded so far. Verified frames appear here immediately upon optical capture.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 decodedList.map((item) => (

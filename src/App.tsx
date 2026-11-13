@@ -11,20 +11,17 @@ import {
 } from './components/ProtocolTelemetryPanel';
 import { StandaloneModal } from './components/StandaloneModal';
 import { MaterialYouSettingsModal } from './components/MaterialYouSettingsModal';
-import {
-  Camera,
-  Download,
-  Palette,
-  Play,
-  Radio,
-  Zap,
-} from 'lucide-react';
-import { AirgapStreamView, AirgapViewTab } from './components/AirgapStreamView';
+import { AirgapStreamView } from './components/AirgapStreamView';
+import { Header, HeaderWorkspaceMode } from './components/Header';
+import { TelemetrySummaryStrip } from './components/TelemetrySummaryStrip';
+import { ActivityDrawer } from './components/ActivityDrawer';
+import { ToastContainer, ToastMessage, ToastTone } from './components/ToastContainer';
 import {
   DeviceRole,
   OpticalPacket,
   ReceiverSessionState,
   SenderSessionState,
+  calculateTransferMetrics,
   createInitialReceiverState,
   parseOpticalPacket,
   prepareFileForOpticalTransfer,
@@ -43,7 +40,7 @@ import { usePWAOfflineEngine } from './utils/usePWA';
 
 const THEME_STORAGE_KEY = 'optilink_m3_theme_v4';
 
-export type AppWorkspaceMode = 'GENERATOR' | 'SCANNER' | 'DUAL' | 'ARQ';
+export type AppWorkspaceMode = HeaderWorkspaceMode;
 
 function loadStoredThemeConfig(): MaterialYouConfig {
   try {
@@ -131,6 +128,8 @@ export default function App() {
   const [standaloneModalOpen, setStandaloneModalOpen] =
     useState<boolean>(false);
   const [materialModalOpen, setMaterialModalOpen] = useState<boolean>(false);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState<boolean>(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [materialConfig, setMaterialConfig] = useState<MaterialYouConfig>(() =>
     loadStoredThemeConfig()
   );
@@ -143,6 +142,25 @@ export default function App() {
     isIOS,
     installApp,
   } = usePWAOfflineEngine();
+
+  const pushToast = useCallback(
+    (title: string, description?: string, tone: ToastTone = 'info') => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const timestamp = new Date().toTimeString().split(' ')[0];
+      setToasts((prev) => [
+        ...prev.slice(-2),
+        { id, title, description, tone, timestamp },
+      ]);
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 3600);
+    },
+    []
+  );
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   // Apply Material You Android 16 dynamic color and shape tokens to root document
   useEffect(() => {
@@ -280,8 +298,13 @@ export default function App() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      pushToast(
+        `Saved ${filename}`,
+        `${bytes.byteLength.toLocaleString()} B verified & reconstructed`,
+        'success'
+      );
     },
-    []
+    [pushToast]
   );
 
   // Automatically trigger file download ONLY when this device is explicitly the RECEIVER
@@ -476,7 +499,12 @@ export default function App() {
       `CRC mismatch on chunk #${chunkIdx} (expected ${validChunk.crc}, got BAD0CRC1) → Receiver emitted RESEND NACK`,
       'WARN'
     );
-  }, [senderState, receiverState, appendFrameLog]);
+    pushToast(
+      `Injected CRC Fault on Chunk #${chunkIdx}`,
+      'Receiver emitted RESEND NACK frame',
+      'warning'
+    );
+  }, [senderState, receiverState, appendFrameLog, pushToast]);
 
   useEffect(() => {
     if (!loopbackRunning) return;
@@ -521,6 +549,11 @@ export default function App() {
     const preset = createPresetPayload(presetKey);
     setRawFileSource(preset);
     startNewTransferSession(preset, chunkSize);
+    pushToast(
+      `Loaded ${preset.name}`,
+      `${preset.bytes.byteLength.toLocaleString()} B compressed with Pako Gzip`,
+      'info'
+    );
   };
 
   const handleFileUpload = async (file: File) => {
@@ -533,15 +566,26 @@ export default function App() {
     };
     setRawFileSource(source);
     startNewTransferSession(source, chunkSize);
+    pushToast(
+      `Staged ${file.name}`,
+      `${bytes.byteLength.toLocaleString()} B ready for optical QR broadcast`,
+      'success'
+    );
   };
 
   const handleChangeChunkSize = (newSize: number) => {
     setChunkSize(newSize);
     startNewTransferSession(rawFileSource, newSize);
+    pushToast(
+      `Frame Density: ${newSize} B/chunk`,
+      'Re-indexed outgoing optical frame schedule',
+      'info'
+    );
   };
 
   const handleResetSession = () => {
     startNewTransferSession(rawFileSource, chunkSize);
+    pushToast('Session Reset', 'Cleared ARQ counters and re-armed Frame 0', 'info');
   };
 
   const handleToggleWakeLock = async () => {
@@ -551,6 +595,7 @@ export default function App() {
         wakeLockSentinelRef.current = null;
       }
       setWakeLockActive(false);
+      pushToast('Screen Wake Lock Released', 'Standard display sleep restored', 'info');
       return;
     }
 
@@ -571,6 +616,7 @@ export default function App() {
     } else {
       setWakeLockActive(true);
     }
+    pushToast('Screen Wake Lock Active', 'Display will stay bright during QR transfer', 'success');
   };
 
   const activePacket =
@@ -580,117 +626,59 @@ export default function App() {
   const activeLedState =
     role === 'SENDER' ? senderState.ledState : receiverState.ledState;
 
+  const isSender = role === 'SENDER';
+  const arqTotalChunks = isSender
+    ? senderState.file?.totalChunks ?? 0
+    : receiverState.metadata?.total ?? 0;
+  const arqCompletedChunks = isSender
+    ? senderState.ackedChunks
+    : receiverState.receivedChunks.size;
+  const arqTotalBytes = isSender
+    ? senderState.file?.size ?? 0
+    : receiverState.metadata?.size ?? 0;
+  const arqTransferredBytes = isSender
+    ? senderState.bytesTransferred
+    : receiverState.bytesReceived;
+  const arqMetrics = calculateTransferMetrics(
+    arqTransferredBytes,
+    arqTotalBytes,
+    isSender ? senderState.startTimeMs : receiverState.startTimeMs,
+    isSender ? senderState.completedTimeMs : receiverState.completedTimeMs
+  );
+
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* 3-Zone Futuristic Glass Top Bar */}
-      <header
-        style={{
-          backgroundColor: 'color-mix(in srgb, var(--m3-surface) 78%, transparent)',
-          borderColor: 'var(--m3-outline-variant)',
-        }}
-        className="sticky top-0 z-30 backdrop-blur-xl flex items-center justify-between gap-8 px-6 h-14 border-b shrink-0"
-      >
-        {/* Zone 1: Geometric Optical Emblem + Wordmark */}
-        <a
-          href="#top"
-          className="flex items-center gap-2.5 text-base font-bold tracking-tight whitespace-nowrap shrink-0"
-        >
-          <span
-            aria-hidden="true"
-            className="w-6 h-6 rounded-lg bg-[var(--m3-primary)]/15 border border-[var(--m3-primary)]/40 flex items-center justify-center shadow-[0_0_14px_-2px_var(--m3-primary)]"
-          >
-            <span className="w-2 h-2 rounded-xs bg-[var(--m3-primary)]" />
-          </span>
-          <span>OptiLink</span>
-        </a>
-
-        {/* Zone 2: Clean single-line text navigation links with luminous active indicator */}
-        <nav
-          aria-label="Primary Transceiver Mode"
-          className="flex items-center gap-7 h-full text-sm font-medium overflow-x-auto"
-        >
-          <button
-            type="button"
-            onClick={() => setWorkspaceMode('GENERATOR')}
-            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-              workspaceMode === 'GENERATOR'
-                ? 'text-[var(--m3-on-surface)] font-semibold'
-                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
-            }`}
-          >
-            <span>Generator</span>
-            {workspaceMode === 'GENERATOR' && (
-              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setWorkspaceMode('SCANNER')}
-            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-              workspaceMode === 'SCANNER'
-                ? 'text-[var(--m3-on-surface)] font-semibold'
-                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
-            }`}
-          >
-            <span>Scanner</span>
-            {workspaceMode === 'SCANNER' && (
-              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setWorkspaceMode('DUAL')}
-            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-              workspaceMode === 'DUAL'
-                ? 'text-[var(--m3-on-surface)] font-semibold'
-                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
-            }`}
-          >
-            <span>Dual Testbed</span>
-            {workspaceMode === 'DUAL' && (
-              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setWorkspaceMode('ARQ')}
-            className={`relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-              workspaceMode === 'ARQ'
-                ? 'text-[var(--m3-on-surface)] font-semibold'
-                : 'm3-text-muted hover:text-[var(--m3-on-surface)]'
-            }`}
-          >
-            <span>Optical ARQ</span>
-            {workspaceMode === 'ARQ' && (
-              <span className="absolute bottom-0 inset-x-0 h-0.5 bg-[var(--m3-primary)] rounded-full shadow-[0_0_12px_var(--m3-primary)]" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMaterialModalOpen(true)}
-            className="relative h-full flex items-center whitespace-nowrap shrink-0 cursor-pointer transition-colors m3-text-muted hover:text-[var(--m3-on-surface)]"
-          >
-            <span>Theme</span>
-          </button>
-        </nav>
-
-        {/* Zone 3: Single Primary Action */}
-        <div className="flex items-center shrink-0">
-          <button
-            type="button"
-            onClick={() => setStandaloneModalOpen(true)}
-            className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full cursor-pointer whitespace-nowrap shrink-0"
-          >
-            Export Single-File
-          </button>
-        </div>
-      </header>
+    <div id="top" className="min-h-screen flex flex-col">
+      {/* Modular Sticky Frosted-Glass Command Header */}
+      <Header
+        workspaceMode={workspaceMode}
+        onSelectWorkspaceMode={(mode) => setWorkspaceMode(mode)}
+        materialConfig={materialConfig}
+        onChangeMaterialConfig={setMaterialConfig}
+        onOpenMaterialModal={() => setMaterialModalOpen(true)}
+        onOpenStandaloneModal={() => setStandaloneModalOpen(true)}
+        onOpenActivityDrawer={() => setActivityDrawerOpen(true)}
+        frameLogCount={frameLogs.length}
+        isOnline={isOnline}
+        onNotify={(title, desc) => pushToast(title, desc, 'info')}
+      />
 
       {/* Main Responsive Workspace */}
       <main
         id="transceiver-workspace"
-        className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5"
+        className="flex-1 max-w-[1380px] w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4"
       >
+        {/* Real-Time KPI & Optical Telemetry Summary Strip */}
+        <TelemetrySummaryStrip
+          workspaceMode={workspaceMode}
+          preparedTransfer={preparedAirgapTransfer}
+          chunkSize={chunkSize}
+          wakeLockActive={wakeLockActive}
+          onToggleWakeLock={handleToggleWakeLock}
+          arqCompletedChunks={arqCompletedChunks}
+          arqTotalChunks={arqTotalChunks}
+          arqSpeedKBps={arqMetrics.speedKBps}
+        />
+
         {workspaceMode !== 'ARQ' ? (
           <AirgapStreamView
             preparedTransfer={preparedAirgapTransfer}
@@ -705,6 +693,7 @@ export default function App() {
             }
             activeViewTab={workspaceMode}
             onTabChange={(tab) => setWorkspaceMode(tab)}
+            onNotify={pushToast}
           />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -776,6 +765,26 @@ export default function App() {
         </div>
       )}
 
+      {/* Contextual Slide-Over Packet & Telemetry Inspector Drawer */}
+      <ActivityDrawer
+        isOpen={activityDrawerOpen}
+        onClose={() => setActivityDrawerOpen(false)}
+        frameLogs={frameLogs}
+        onClearLogs={() => {
+          setFrameLogs([]);
+          pushToast('Cleared Exchange Log', 'Frame history reset', 'info');
+        }}
+        activePacket={activePacket}
+        preparedTransfer={preparedAirgapTransfer}
+        onStepLoopback={() => {
+          handleStepLoopback();
+          pushToast('Stepped ARQ Frame', 'Advanced optical handshake state', 'info');
+        }}
+        onInjectCrcError={handleInjectCrcError}
+        onResetSession={handleResetSession}
+      />
+
+      {/* Material You Theme & Shape Customization Modal */}
       <MaterialYouSettingsModal
         isOpen={materialModalOpen}
         onClose={() => setMaterialModalOpen(false)}
@@ -789,10 +798,14 @@ export default function App() {
         onInstallPWA={installApp}
       />
 
+      {/* Standalone Single-File HTML Export Modal */}
       <StandaloneModal
         isOpen={standaloneModalOpen}
         onClose={() => setStandaloneModalOpen(false)}
       />
+
+      {/* Bottom-Right Floating Toast Notification System */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

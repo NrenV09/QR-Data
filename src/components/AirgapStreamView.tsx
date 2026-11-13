@@ -36,6 +36,11 @@ interface AirgapStreamViewProps {
   onTriggerDownload: (bytes: Uint8Array, filename: string) => void;
   activeViewTab?: AirgapViewTab;
   onTabChange?: (tab: AirgapViewTab) => void;
+  onNotify?: (
+    title: string,
+    description?: string,
+    tone?: 'success' | 'info' | 'warning'
+  ) => void;
 }
 
 export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
@@ -47,6 +52,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
   qrQuietZoneBoost,
   onTriggerDownload,
   activeViewTab,
+  onNotify,
 }) => {
   const viewTab: AirgapViewTab = activeViewTab ?? 'GENERATOR';
 
@@ -1015,7 +1021,11 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
 
             {/* Futuristic Optical HUD Reticle with Corner Fiducials & Laser Scanline */}
             <div className="absolute w-48 h-44 rounded-2xl border border-dashed border-[var(--m3-primary)]/40 pointer-events-none flex items-center justify-center z-20 overflow-hidden">
-              <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-[var(--m3-primary)] to-transparent animate-scanline" />
+              <div
+                className={`absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-[var(--m3-primary)] to-transparent ${
+                  cameraActive ? 'animate-scanline' : 'opacity-60'
+                }`}
+              />
               <span className="absolute top-0 left-0 w-3.5 h-3.5 border-t-2 border-l-2 border-[var(--m3-primary)] rounded-tl-sm" />
               <span className="absolute top-0 right-0 w-3.5 h-3.5 border-t-2 border-r-2 border-[var(--m3-primary)] rounded-tr-sm" />
               <span className="absolute bottom-0 left-0 w-3.5 h-3.5 border-b-2 border-l-2 border-[var(--m3-primary)] rounded-bl-sm" />
@@ -1180,6 +1190,15 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
               receivedCount={scannerState.receivedCount}
               isComplete={scannerState.isComplete}
               reconstructedBytes={scannerState.reconstructedBytes}
+              onSimulateSampleScan={() => {
+                handleSimulatePartialScan();
+                onNotify?.(
+                  'Sample Chunk Split Loaded',
+                  `Indexed ${preparedTransfer.name} (Decoded & Undecoded preview)`,
+                  'info'
+                );
+              }}
+              onNotify={(title, desc) => onNotify?.(title, desc, 'info')}
               onTriggerDownload={() => {
                 if (scannerState.reconstructedBytes && scannerState.fileMetadata) {
                   onTriggerDownload(
@@ -1209,6 +1228,15 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
               receivedCount={scannerState.receivedCount}
               isComplete={scannerState.isComplete}
               reconstructedBytes={scannerState.reconstructedBytes}
+              onSimulateSampleScan={() => {
+                handleSimulatePartialScan();
+                onNotify?.(
+                  'Partial Scan Simulated',
+                  `Indexed ${preparedTransfer.name} in Dual Testbed`,
+                  'info'
+                );
+              }}
+              onNotify={(title, desc) => onNotify?.(title, desc, 'info')}
               onTriggerDownload={() => {
                 if (scannerState.reconstructedBytes && scannerState.fileMetadata) {
                   onTriggerDownload(
