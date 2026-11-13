@@ -99,8 +99,8 @@ export const MATERIAL_SEED_PRESETS: SeedPresetInfo[] = [
 ];
 
 export const DEFAULT_MATERIAL_CONFIG: MaterialYouConfig = {
-  seedId: 'cobalt',
-  customHex: '#4285F4',
+  seedId: 'lavender',
+  customHex: '#6366F1',
   mode: 'dark',
   contrast: 'standard',
   shapeScale: 'expressive',
@@ -114,7 +114,7 @@ export const DEFAULT_MATERIAL_CONFIG: MaterialYouConfig = {
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const clean = hex.replace(/[^0-9a-fA-F]/g, '');
   if (clean.length !== 6) {
-    return { r: 66, g: 133, b: 244 };
+    return { r: 99, g: 102, b: 241 };
   }
   return {
     r: parseInt(clean.slice(0, 2), 16),
@@ -179,12 +179,12 @@ export function resolveMaterialYouTokens(
   const preset = MATERIAL_SEED_PRESETS.find((p) => p.id === config.seedId);
   const seedHex =
     config.seedId === 'custom'
-      ? config.customHex || '#4285F4'
-      : preset?.hex || '#4285F4';
+      ? config.customHex || '#6366F1'
+      : preset?.hex || '#6366F1';
 
   const { r, g, b } = hexToRgb(seedHex);
   const { h, s } = rgbToHsl(r, g, b);
-  const activeSat = Math.max(48, s);
+  const activeSat = Math.max(54, s);
 
   const radiusMap: Record<
     MaterialShapeScale,
@@ -245,22 +245,22 @@ export function resolveMaterialYouTokens(
     };
   }
 
-  // Default Architectural Obsidian Dark Surface (<6% neutral tint saturation)
+  // Deep Obsidian Void Dark Surface (#050507 base with translucent elevation layers)
   return {
-    primary: hslString(h, Math.min(90, activeSat + 6), Math.min(86, 74 + contrastDelta)),
-    onPrimary: hslString(h, activeSat, 10),
+    primary: hslString(h, Math.min(92, activeSat + 8), Math.min(86, 72 + contrastDelta)),
+    onPrimary: hslString(h, activeSat, 9),
     primaryContainer: hslString(h, Math.min(58, activeSat), 20 + contrastDelta),
-    onPrimaryContainer: hslString(h, 85, 93),
-    secondaryContainer: hslString(h, 10, 16 + contrastDelta),
+    onPrimaryContainer: hslString(h, 88, 94),
+    secondaryContainer: hslString(h, 10, 15 + contrastDelta),
     onSecondaryContainer: hslString(h, 35, 90),
-    surface: hslString(h, 5, 5),
-    surfaceContainerLow: hslString(h, 5, 8),
-    surfaceContainer: hslString(h, 5, 9 + Math.floor(contrastDelta / 2)),
-    surfaceContainerHigh: hslString(h, 6, 13 + contrastDelta),
-    onSurface: hslString(h, 8, 96),
-    onSurfaceVariant: hslString(h, 6, Math.min(85, 64 + contrastDelta)),
-    outline: hslString(h, 6, Math.min(52, 26 + contrastDelta * 2)),
-    outlineVariant: hslString(h, 5, Math.min(38, 16 + contrastDelta)),
+    surface: '#050507',
+    surfaceContainerLow: '#0A0B0F',
+    surfaceContainer: '#0D0E14',
+    surfaceContainerHigh: '#141620',
+    onSurface: '#F4F6FB',
+    onSurfaceVariant: hslString(h, 8, Math.min(85, 66 + contrastDelta)),
+    outline: 'rgba(255, 255, 255, 0.16)',
+    outlineVariant: 'rgba(255, 255, 255, 0.08)',
     radiusLg: radii.lg,
     radiusMd: radii.md,
     radiusSm: radii.sm,

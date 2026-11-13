@@ -650,6 +650,8 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsTransferring(true)}
+                data-magnetic
+                data-cursor-label="Transmit"
                 className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
@@ -769,6 +771,7 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
       <div className="p-5 border-b border-[var(--m3-outline-variant)] flex flex-col gap-3">
         <div
           data-testid="file-drop-zone"
+          data-cursor-label="Drop File"
           role="button"
           tabIndex={0}
           aria-label="Drop file here or click to select file for QR transfer"
@@ -1063,6 +1066,8 @@ export const AirgapStreamView: React.FC<AirgapStreamViewProps> = ({
               <button
                 type="button"
                 onClick={() => startReceiverCamera(facingMode)}
+                data-magnetic
+                data-cursor-label="Scan"
                 className="min-h-[36px] px-4 py-1.5 text-xs font-semibold m3-btn-filled rounded-full flex items-center gap-1.5 cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />

@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { OpticalViewport } from './components/OpticalViewport';
 import {
   FrameLogEntry,
@@ -12,10 +13,15 @@ import {
 import { StandaloneModal } from './components/StandaloneModal';
 import { MaterialYouSettingsModal } from './components/MaterialYouSettingsModal';
 import { AirgapStreamView } from './components/AirgapStreamView';
-import { Header, HeaderWorkspaceMode } from './components/Header';
+import { FloatingNavbar, HeaderWorkspaceMode } from './components/FloatingNavbar';
 import { TelemetrySummaryStrip } from './components/TelemetrySummaryStrip';
 import { ActivityDrawer } from './components/ActivityDrawer';
 import { ToastContainer, ToastMessage, ToastTone } from './components/ToastContainer';
+import { InteractiveCanvasBackground } from './components/InteractiveCanvasBackground';
+import { MagneticCursor } from './components/MagneticCursor';
+import { HeroSection } from './components/HeroSection';
+import { OpticalMarquee } from './components/OpticalMarquee';
+import { BentoFeatureGrid } from './components/BentoFeatureGrid';
 import {
   DeviceRole,
   OpticalPacket,
@@ -647,123 +653,219 @@ export default function App() {
   );
 
   return (
-    <div id="top" className="min-h-screen flex flex-col">
-      {/* Modular Sticky Frosted-Glass Command Header */}
-      <Header
-        workspaceMode={workspaceMode}
-        onSelectWorkspaceMode={(mode) => setWorkspaceMode(mode)}
-        materialConfig={materialConfig}
-        onChangeMaterialConfig={setMaterialConfig}
-        onOpenMaterialModal={() => setMaterialModalOpen(true)}
-        onOpenStandaloneModal={() => setStandaloneModalOpen(true)}
-        onOpenActivityDrawer={() => setActivityDrawerOpen(true)}
-        frameLogCount={frameLogs.length}
-        isOnline={isOnline}
-        onNotify={(title, desc) => pushToast(title, desc, 'info')}
-      />
+    <div id="top" className="relative min-h-screen flex flex-col">
+      <InteractiveCanvasBackground isLightMode={materialConfig.mode === 'light'} />
+      <MagneticCursor />
 
-      {/* Main Responsive Workspace */}
-      <main
-        id="transceiver-workspace"
-        className="flex-1 max-w-[1380px] w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-4"
-      >
-        {/* Real-Time KPI & Optical Telemetry Summary Strip */}
-        <TelemetrySummaryStrip
+      <div className="relative z-10 flex-1 flex flex-col">
+        <FloatingNavbar
           workspaceMode={workspaceMode}
-          preparedTransfer={preparedAirgapTransfer}
-          chunkSize={chunkSize}
-          wakeLockActive={wakeLockActive}
-          onToggleWakeLock={handleToggleWakeLock}
-          arqCompletedChunks={arqCompletedChunks}
-          arqTotalChunks={arqTotalChunks}
-          arqSpeedKBps={arqMetrics.speedKBps}
+          onSelectWorkspaceMode={(mode) => setWorkspaceMode(mode)}
+          materialConfig={materialConfig}
+          onChangeMaterialConfig={setMaterialConfig}
+          onOpenMaterialModal={() => setMaterialModalOpen(true)}
+          onOpenStandaloneModal={() => setStandaloneModalOpen(true)}
+          onOpenActivityDrawer={() => setActivityDrawerOpen(true)}
+          frameLogCount={frameLogs.length}
+          isOnline={isOnline}
+          onNotify={(title, desc) => pushToast(title, desc, 'info')}
         />
 
-        {workspaceMode !== 'ARQ' ? (
-          <AirgapStreamView
-            preparedTransfer={preparedAirgapTransfer}
-            onFileUpload={handleFileUpload}
-            onLoadPresetFile={handleLoadPresetFile}
-            chunkSize={chunkSize}
-            onChangeChunkSize={handleChangeChunkSize}
-            qrQuietZoneBoost={materialConfig.qrQuietZoneBoost}
-            onOpenMaterialSettings={() => setMaterialModalOpen(true)}
-            onTriggerDownload={(bytes, filename) =>
-              triggerBlobDownload(bytes, filename, rawFileSource.mime)
-            }
-            activeViewTab={workspaceMode}
-            onTabChange={(tab) => setWorkspaceMode(tab)}
-            onNotify={pushToast}
-          />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            <section
-              aria-label="Optical QR Emitter and Selfie Alignment Viewport"
-              className="lg:col-span-5 flex flex-col gap-4"
-            >
-              <OpticalViewport
-                activePacket={activePacket}
-                onQrScanned={handleCameraQrScanned}
-                flipQr={flipQr}
-                onToggleFlipQr={() => setFlipQr((f) => !f)}
-                mirrorCamera={mirrorCamera}
-                onToggleMirrorCamera={() => setMirrorCamera((m) => !m)}
-                scanIntervalMs={scanIntervalMs}
-                ledState={activeLedState}
-                role={role}
-                peerSimPacket={peerSimPacket}
-                qrQuietZoneBoost={materialConfig.qrQuietZoneBoost}
-              />
-            </section>
+        <HeroSection
+          preparedTransfer={preparedAirgapTransfer}
+          workspaceMode={workspaceMode}
+          onSelectWorkspaceMode={(mode) => setWorkspaceMode(mode)}
+          isLightMode={materialConfig.mode === 'light'}
+        />
 
-            <section
-              aria-label="Protocol Controls and Live Telemetry"
-              className="lg:col-span-7"
-            >
-              <ProtocolTelemetryPanel
-                role={role}
-                onSelectRole={(newRole) => setRole(newRole)}
-                senderState={senderState}
-                receiverState={receiverState}
-                chunkSize={chunkSize}
-                onChangeChunkSize={handleChangeChunkSize}
-                scanIntervalMs={scanIntervalMs}
-                onChangeScanInterval={(ms) => setScanIntervalMs(ms)}
-                onFileUpload={handleFileUpload}
-                onLoadPresetFile={handleLoadPresetFile}
-                onResetSession={handleResetSession}
-                loopbackRunning={loopbackRunning}
-                onToggleLoopback={() => setLoopbackRunning((r) => !r)}
-                onStepLoopback={handleStepLoopback}
-                onInjectCrcError={handleInjectCrcError}
-                wakeLockActive={wakeLockActive}
-                wakeLockSupported={wakeLockSupported}
-                onToggleWakeLock={handleToggleWakeLock}
-                frameLogs={frameLogs}
-                onDownloadReceivedFile={() => {
-                  if (receiverState.assembledBytes && receiverState.metadata) {
-                    triggerBlobDownload(
-                      receiverState.assembledBytes,
-                      receiverState.metadata.name,
-                      receiverState.metadata.mime
-                    );
+        <OpticalMarquee />
+
+        <BentoFeatureGrid
+          preparedTransfer={preparedAirgapTransfer}
+          onSelectWorkspaceMode={(mode) => setWorkspaceMode(mode)}
+          onLoadPresetFile={handleLoadPresetFile}
+          onOpenStandaloneModal={() => setStandaloneModalOpen(true)}
+        />
+
+        <main
+          id="transceiver-workspace"
+          className="scroll-mt-20 flex-1 max-w-[1340px] w-full mx-auto px-4 sm:px-6 pt-4 pb-12 flex flex-col gap-4"
+        >
+          <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-[0.16em] text-cyan-400">
+                Live Optical Transceiver
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold tracking-[-0.02em] mt-0.5">
+                {workspaceMode === 'GENERATOR'
+                  ? 'Optical QR Stream Generator'
+                  : workspaceMode === 'SCANNER'
+                  ? '60Hz Camera Receiver & Chunk Ledger'
+                  : workspaceMode === 'DUAL'
+                  ? 'Isolated Dual Loopback Testbed'
+                  : 'Bidirectional Stop-and-Wait ARQ Console'}
+              </h2>
+            </div>
+
+            <div className="text-xs font-mono m3-text-muted tabular-nums">
+              Mode: <span className="text-[var(--m3-on-surface)] font-semibold">{workspaceMode}</span>
+            </div>
+          </div>
+
+          <TelemetrySummaryStrip
+            workspaceMode={workspaceMode}
+            preparedTransfer={preparedAirgapTransfer}
+            chunkSize={chunkSize}
+            wakeLockActive={wakeLockActive}
+            onToggleWakeLock={handleToggleWakeLock}
+            arqCompletedChunks={arqCompletedChunks}
+            arqTotalChunks={arqTotalChunks}
+            arqSpeedKBps={arqMetrics.speedKBps}
+          />
+
+          <AnimatePresence mode="wait">
+            {workspaceMode !== 'ARQ' ? (
+              <motion.div
+                key={`airgap-${workspaceMode}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <AirgapStreamView
+                  preparedTransfer={preparedAirgapTransfer}
+                  onFileUpload={handleFileUpload}
+                  onLoadPresetFile={handleLoadPresetFile}
+                  chunkSize={chunkSize}
+                  onChangeChunkSize={handleChangeChunkSize}
+                  qrQuietZoneBoost={materialConfig.qrQuietZoneBoost}
+                  onOpenMaterialSettings={() => setMaterialModalOpen(true)}
+                  onTriggerDownload={(bytes, filename) =>
+                    triggerBlobDownload(bytes, filename, rawFileSource.mime)
                   }
-                }}
-                onOpenMaterialSettings={() => setMaterialModalOpen(true)}
-              />
-            </section>
+                  activeViewTab={workspaceMode}
+                  onTabChange={(tab) => setWorkspaceMode(tab)}
+                  onNotify={pushToast}
+                />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="arq-console"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start"
+              >
+                <section
+                  aria-label="Optical QR Emitter and Selfie Alignment Viewport"
+                  className="lg:col-span-5 flex flex-col gap-4"
+                >
+                  <OpticalViewport
+                    activePacket={activePacket}
+                    onQrScanned={handleCameraQrScanned}
+                    flipQr={flipQr}
+                    onToggleFlipQr={() => setFlipQr((f) => !f)}
+                    mirrorCamera={mirrorCamera}
+                    onToggleMirrorCamera={() => setMirrorCamera((m) => !m)}
+                    scanIntervalMs={scanIntervalMs}
+                    ledState={activeLedState}
+                    role={role}
+                    peerSimPacket={peerSimPacket}
+                    qrQuietZoneBoost={materialConfig.qrQuietZoneBoost}
+                  />
+                </section>
+
+                <section
+                  aria-label="Protocol Controls and Live Telemetry"
+                  className="lg:col-span-7"
+                >
+                  <ProtocolTelemetryPanel
+                    role={role}
+                    onSelectRole={(newRole) => setRole(newRole)}
+                    senderState={senderState}
+                    receiverState={receiverState}
+                    chunkSize={chunkSize}
+                    onChangeChunkSize={handleChangeChunkSize}
+                    scanIntervalMs={scanIntervalMs}
+                    onChangeScanInterval={(ms) => setScanIntervalMs(ms)}
+                    onFileUpload={handleFileUpload}
+                    onLoadPresetFile={handleLoadPresetFile}
+                    onResetSession={handleResetSession}
+                    loopbackRunning={loopbackRunning}
+                    onToggleLoopback={() => setLoopbackRunning((r) => !r)}
+                    onStepLoopback={handleStepLoopback}
+                    onInjectCrcError={handleInjectCrcError}
+                    wakeLockActive={wakeLockActive}
+                    wakeLockSupported={wakeLockSupported}
+                    onToggleWakeLock={handleToggleWakeLock}
+                    frameLogs={frameLogs}
+                    onDownloadReceivedFile={() => {
+                      if (receiverState.assembledBytes && receiverState.metadata) {
+                        triggerBlobDownload(
+                          receiverState.assembledBytes,
+                          receiverState.metadata.name,
+                          receiverState.metadata.mime
+                        );
+                      }
+                    }}
+                    onOpenMaterialSettings={() => setMaterialModalOpen(true)}
+                  />
+                </section>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
+
+        <footer className="border-t border-[var(--m3-outline-variant)] bg-[color-mix(in_srgb,var(--m3-surface-container-low)_70%,transparent)] backdrop-blur-md">
+          <div className="max-w-[1340px] mx-auto px-4 sm:px-6 py-6 flex flex-wrap items-center justify-between gap-4 text-xs m3-text-muted">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-[var(--m3-on-surface)]">OptiLink ARQ</span>
+              <span>·</span>
+              <span>Offline Optical QR File Transfer</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-5 font-mono text-[11px]">
+              <button
+                type="button"
+                onClick={() => setWorkspaceMode('GENERATOR')}
+                className="hover:text-[var(--m3-on-surface)] cursor-pointer transition-colors"
+              >
+                Generator
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkspaceMode('SCANNER')}
+                className="hover:text-[var(--m3-on-surface)] cursor-pointer transition-colors"
+              >
+                Scanner
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkspaceMode('ARQ')}
+                className="hover:text-[var(--m3-on-surface)] cursor-pointer transition-colors"
+              >
+                Optical ARQ
+              </button>
+              <button
+                type="button"
+                onClick={() => setStandaloneModalOpen(true)}
+                className="text-indigo-400 hover:text-indigo-300 cursor-pointer transition-colors"
+              >
+                Export Single-File HTML
+              </button>
+            </div>
+          </div>
+        </footer>
+
+        {!isOnline && (
+          <div
+            role="status"
+            className="fixed bottom-4 left-4 z-40 m3-btn-tonal px-4 py-2.5 text-xs font-medium shadow-lg"
+          >
+            Offline Mode Active — Running 100% from local Service Worker cache.
           </div>
         )}
-      </main>
-
-      {!isOnline && (
-        <div
-          role="status"
-          className="fixed bottom-4 left-4 z-40 m3-btn-tonal px-4 py-2.5 text-xs font-medium shadow-lg"
-        >
-          Offline Mode Active — Running 100% from local Service Worker cache.
-        </div>
-      )}
+      </div>
 
       {/* Contextual Slide-Over Packet & Telemetry Inspector Drawer */}
       <ActivityDrawer
