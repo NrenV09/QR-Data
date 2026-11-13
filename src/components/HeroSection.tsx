@@ -73,7 +73,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
       className="relative pt-8 pb-8 sm:pt-12 sm:pb-12"
     >
       <div className="max-w-[1340px] mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-        <div className="lg:col-span-7 flex flex-col items-start">
+        <div
+          className={`lg:col-span-7 flex flex-col items-start relative rounded-3xl ${
+            isLightMode
+              ? ''
+              : 'p-4 sm:p-6 -m-4 sm:-m-6 bg-[radial-gradient(ellipse_at_28%_45%,rgba(5,5,8,0.84)_0%,rgba(5,5,8,0.58)_55%,transparent_88%)]'
+          }`}
+        >
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}

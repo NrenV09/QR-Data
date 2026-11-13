@@ -5,6 +5,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import type * as THREE from 'three';
 import { OpticalViewport } from './components/OpticalViewport';
 import {
   FrameLogEntry,
@@ -17,11 +18,17 @@ import { FloatingNavbar, HeaderWorkspaceMode } from './components/FloatingNavbar
 import { TelemetrySummaryStrip } from './components/TelemetrySummaryStrip';
 import { ActivityDrawer } from './components/ActivityDrawer';
 import { ToastContainer, ToastMessage, ToastTone } from './components/ToastContainer';
-import { InteractiveCanvasBackground } from './components/InteractiveCanvasBackground';
 import { MagneticCursor } from './components/MagneticCursor';
 import { HeroSection } from './components/HeroSection';
 import { OpticalMarquee } from './components/OpticalMarquee';
 import { BentoFeatureGrid } from './components/BentoFeatureGrid';
+import { OpticalSpatialStage } from './components/three/OpticalSpatialStage';
+import { SpatialChamberFocus } from './components/three/CameraSplineRig';
+import { CustomShaderMode } from './components/three/CustomShaderCards';
+import { useLenisScrollSpline } from './components/three/useLenisScrollSpline';
+import { parseLocalGlbFile } from './components/three/proceduralPbr';
+import { SpatialCorridorSection } from './components/SpatialCorridorSection';
+import { SpatialDock } from './components/SpatialDock';
 import {
   DeviceRole,
   OpticalPacket,
@@ -139,6 +146,15 @@ export default function App() {
   const [materialConfig, setMaterialConfig] = useState<MaterialYouConfig>(() =>
     loadStoredThemeConfig()
   );
+
+  // 3D WebGL Spatial Stage, Navier-Stokes Fluid & Custom Shader state
+  const scrollProgressRef = useLenisScrollSpline('#spatial-exhibition');
+  const [chamberFocus, setChamberFocus] = useState<SpatialChamberFocus>('AUTO');
+  const [shaderMode, setShaderMode] = useState<CustomShaderMode>('ascii');
+  const [fluidEnabled, setFluidEnabled] = useState<boolean>(true);
+  const [rainbowFluid, setRainbowFluid] = useState<boolean>(false);
+  const [customGlbModel, setCustomGlbModel] = useState<THREE.Group | null>(null);
+  const [customGlbName, setCustomGlbName] = useState<string | null>(null);
 
   const {
     isOnline,
@@ -625,6 +641,39 @@ export default function App() {
     pushToast('Screen Wake Lock Active', 'Display will stay bright during QR transfer', 'success');
   };
 
+  const handleUploadGlbFile = useCallback(
+    async (file: File) => {
+      try {
+        const parsed = await parseLocalGlbFile(file);
+        setCustomGlbModel(parsed);
+        setCustomGlbName(file.name);
+        setChamberFocus('BRUTALIST');
+        pushToast(
+          `Mounted ${file.name}`,
+          'Normalized & grounded on Brutalist Exhibition Plinth (offline)',
+          'success'
+        );
+      } catch {
+        pushToast(
+          'Invalid .GLB / .GLTF File',
+          'Could not parse 3D mesh buffer cleanly',
+          'warning'
+        );
+      }
+    },
+    [pushToast]
+  );
+
+  const handleResetGlbFile = useCallback(() => {
+    setCustomGlbModel(null);
+    setCustomGlbName(null);
+    pushToast(
+      'Restored Optical Prism Core',
+      'Showing procedural multi-part Brutalist centerpiece',
+      'info'
+    );
+  }, [pushToast]);
+
   const activePacket =
     role === 'SENDER' ? senderState.activePacket : receiverState.activePacket;
   const peerSimPacket =
@@ -654,7 +703,15 @@ export default function App() {
 
   return (
     <div id="top" className="relative min-h-screen flex flex-col">
-      <InteractiveCanvasBackground isLightMode={materialConfig.mode === 'light'} />
+      <OpticalSpatialStage
+        scrollProgressRef={scrollProgressRef}
+        chamberFocus={chamberFocus}
+        shaderMode={shaderMode}
+        fluidEnabled={fluidEnabled}
+        rainbowFluid={rainbowFluid}
+        customGlbModel={customGlbModel}
+        isLightMode={materialConfig.mode === 'light'}
+      />
       <MagneticCursor />
 
       <div className="relative z-10 flex-1 flex flex-col">
@@ -676,6 +733,14 @@ export default function App() {
           workspaceMode={workspaceMode}
           onSelectWorkspaceMode={(mode) => setWorkspaceMode(mode)}
           isLightMode={materialConfig.mode === 'light'}
+        />
+
+        <SpatialCorridorSection
+          chamberFocus={chamberFocus}
+          onSelectChamberFocus={(focus) => setChamberFocus(focus)}
+          shaderMode={shaderMode}
+          onSelectShaderMode={(mode) => setShaderMode(mode)}
+          customGlbName={customGlbName}
         />
 
         <OpticalMarquee />
@@ -817,7 +882,7 @@ export default function App() {
           </AnimatePresence>
         </main>
 
-        <footer className="border-t border-[var(--m3-outline-variant)] bg-[color-mix(in_srgb,var(--m3-surface-container-low)_70%,transparent)] backdrop-blur-md">
+        <footer className="border-t border-[var(--m3-outline-variant)] bg-[#07090f]/95 pb-20 sm:pb-24">
           <div className="max-w-[1340px] mx-auto px-4 sm:px-6 py-6 flex flex-wrap items-center justify-between gap-4 text-xs m3-text-muted">
             <div className="flex items-center gap-3">
               <span className="font-bold text-[var(--m3-on-surface)]">OptiLink ARQ</span>
@@ -904,6 +969,21 @@ export default function App() {
       <StandaloneModal
         isOpen={standaloneModalOpen}
         onClose={() => setStandaloneModalOpen(false)}
+      />
+
+      {/* Collapsible 3D Stage Cinema HUD & Local GLB Loader */}
+      <SpatialDock
+        chamberFocus={chamberFocus}
+        onSelectChamberFocus={(focus) => setChamberFocus(focus)}
+        shaderMode={shaderMode}
+        onSelectShaderMode={(mode) => setShaderMode(mode)}
+        fluidEnabled={fluidEnabled}
+        onToggleFluid={() => setFluidEnabled((f) => !f)}
+        rainbowFluid={rainbowFluid}
+        onToggleRainbowFluid={() => setRainbowFluid((r) => !r)}
+        customGlbName={customGlbName}
+        onUploadGlbFile={handleUploadGlbFile}
+        onResetGlbFile={handleResetGlbFile}
       />
 
       {/* Bottom-Right Floating Toast Notification System */}

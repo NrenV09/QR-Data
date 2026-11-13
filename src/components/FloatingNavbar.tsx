@@ -52,10 +52,10 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
         style={{
           backgroundColor:
             materialConfig.mode === 'light'
-              ? 'rgba(255, 255, 255, 0.82)'
-              : 'rgba(10, 11, 16, 0.76)',
+              ? 'rgba(255, 255, 255, 0.94)'
+              : 'rgba(10, 11, 16, 0.92)',
         }}
-        className="pointer-events-auto max-w-[1340px] mx-auto rounded-full backdrop-blur-xl border border-[var(--m3-outline-variant)] px-3 sm:px-4 h-14 flex items-center justify-between gap-2 sm:gap-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_20px_50px_-14px_rgba(0,0,0,0.75)]"
+        className="pointer-events-auto max-w-[1340px] mx-auto rounded-full border border-[var(--m3-outline-variant)] px-3 sm:px-4 h-14 flex items-center justify-between gap-2 sm:gap-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_20px_50px_-14px_rgba(0,0,0,0.75)]"
       >
         {/* Zone 1: Clean Brand Emblem & Wordmark */}
         <div className="flex items-center gap-3 shrink-0 pl-1">
@@ -79,7 +79,7 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
           />
 
           <span className="hidden xl:inline-flex items-center gap-1.5 text-[11px] font-mono m3-text-muted whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             <span>{isOnline ? '60Hz Optical Ready' : 'Offline SW Active'}</span>
           </span>
         </div>
@@ -160,10 +160,10 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
         style={{
           backgroundColor:
             materialConfig.mode === 'light'
-              ? 'rgba(255, 255, 255, 0.86)'
-              : 'rgba(10, 11, 16, 0.82)',
+              ? 'rgba(255, 255, 255, 0.94)'
+              : 'rgba(10, 11, 16, 0.92)',
         }}
-        className="md:hidden pointer-events-auto mt-2 mx-auto max-w-fit rounded-full backdrop-blur-xl border border-[var(--m3-outline-variant)] p-1 flex items-center gap-1 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.7)]"
+        className="md:hidden pointer-events-auto mt-2 mx-auto max-w-fit rounded-full border border-[var(--m3-outline-variant)] p-1 flex items-center gap-1 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.7)]"
       >
         {navItems.map((item) => {
           const isActive = workspaceMode === item.id;

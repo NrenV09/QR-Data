@@ -199,13 +199,26 @@ export default defineConfig(() => {
       },
     },
     resolve: {
-      dedupe: ['react', 'react-dom'],
+      dedupe: ['react', 'react-dom', 'three'],
       alias: {
         '@': path.resolve(typeof import.meta.dirname !== 'undefined' ? import.meta.dirname : __dirname, '.'),
       },
     },
     optimizeDeps: {
-      include: ['react', 'react-dom', 'react/jsx-runtime', 'motion/react', 'lucide-react'],
+      include: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'motion/react',
+        'lucide-react',
+        'three',
+        '@react-three/fiber',
+        '@react-three/drei',
+        'three-custom-shader-material',
+        'lenis',
+        'gsap',
+        'workbox-window',
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

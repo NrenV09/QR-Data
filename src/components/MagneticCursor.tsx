@@ -131,7 +131,7 @@ export const MagneticCursor: React.FC = () => {
         <div
           className={`rounded-full transition-all duration-200 flex items-center justify-center ${
             cursorLabel
-              ? 'px-3 py-1 bg-[#0b0c12]/90 backdrop-blur-md border border-indigo-400/50 shadow-[0_0_24px_-4px_rgba(99,102,241,0.6)]'
+              ? 'px-3 py-1 bg-[#0b0c12]/95 border border-indigo-400/50 shadow-[0_0_24px_-4px_rgba(99,102,241,0.6)]'
               : isMagneticHover
               ? 'w-9 h-9 border border-indigo-400/70 bg-indigo-500/10 shadow-[0_0_20px_-4px_rgba(99,102,241,0.5)]'
               : 'w-7 h-7 border border-white/25 bg-white/[0.02]'
